@@ -1,0 +1,37 @@
+import mongoose from 'mongoose';
+
+const productSchema = new mongoose.Schema({
+        productName : {
+            type:String,
+            required:true,
+        },
+        productCategory:{
+            type:String,
+            required:true
+        },
+        stock:{
+            type:Number,
+            required:true
+        },
+        purchase:{
+            type:Number
+        },
+        sellingPrice:{
+            type:Number
+        },
+        ExpiryDate:{
+            type:Date,
+            required:true
+        },
+        supplierName:{
+            type:String,
+        },
+        userId:{
+            type:mongoose.Schema.Types.ObjectId,
+            ref:"dashboard/userData",
+            required:true
+        }
+})
+
+const product = mongoose.model("dashboard/products", productSchema);
+export default product;

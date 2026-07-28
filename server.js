@@ -7,6 +7,7 @@ dotenv.config();
 import connectDb from './config/db.js';
 
 import userRoutes from './routes/userRoutes.js';
+import productRoutes from './routes/productRoute.js';
 
 connectDb();
 
@@ -17,6 +18,7 @@ app.use(cors());
 
 //Routes
 app.use('/api', userRoutes);
+app.use('/product', productRoutes)
 
 app.get('/',(req,res)=>{
     res.send("backed is running")
