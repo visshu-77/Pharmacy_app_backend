@@ -8,6 +8,7 @@ import connectDb from './config/db.js';
 
 import userRoutes from './routes/userRoutes.js';
 import productRoutes from './routes/productRoute.js';
+import categoryRoutes from "./routes/categoryRoute.js";
 
 connectDb();
 
@@ -19,6 +20,7 @@ app.use(cors());
 //Routes
 app.use('/api', userRoutes);
 app.use('/product', productRoutes)
+app.use('/category', categoryRoutes)
 
 app.get('/',(req,res)=>{
     res.send("backed is running")
