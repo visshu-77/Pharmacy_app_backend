@@ -1,7 +1,11 @@
 import productModel from '../model/product.js';
+import categoryModel from "../model/category.js";
+import { Parser } from 'json2csv';
+import { Readable } from "stream";
+import csv from "csv-parser";
 
-export const addProduct = async(req,res)=>{
-    try{
+export const addProduct = async (req, res) => {
+    try {
 
         const {
             productName,
@@ -13,15 +17,15 @@ export const addProduct = async(req,res)=>{
             supplierName,
         } = req.body;
 
-        if(!(productName && productCategory && stock && ExpiryDate)){
+        if (!(productName && productCategory && stock && ExpiryDate)) {
             return res.status(401).json({
-                message:"fields are required"
+                message: "fields are required"
             });
         }
 
-        if(stock < 0){
+        if (stock < 0) {
             return res.status(404).json({
-                message:"Stock should be greater than 0"
+                message: "Stock should be greater than 0"
             });
         }
 
@@ -37,32 +41,201 @@ export const addProduct = async(req,res)=>{
         });
 
         res.status(200).json({
-            message:"Product Added Successfully",
+            message: "Product Added Successfully",
             product
         })
 
-    }catch(err){
-        console.log("server error",err);
+    } catch (err) {
+        console.log("server error", err);
     }
 }
 
-export const getProduct = async(req,res)=>{
-    try{
+export const getProduct = async (req, res) => {
+    try {
         const products = await productModel.find({
-            userId:req.user.id
-        })
+            userId: req.user.id
+        }).populate("productCategory", "categoryName");
 
-        if(!products){
+        if (!products) {
             return res.status(401).json({
-                message:"No product Found"
+                message: "No product Found"
             })
         }
 
         return res.status(200).json({
-            message:"Product fatched Successfully",
+            message: "Product fatched Successfully",
             products
         });
-    }catch(err){
+    } catch (err) {
         console.log("Server error", err);
     }
 }
+
+export const deleteProduct = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const deleteProduct = await productModel.findOne({
+            _id: id,
+            userId: req.user.id
+        })
+
+        if (!deleteProduct) {
+            return res.status(404).json({
+                message: "product not found"
+            })
+        }
+
+        await productModel.deleteOne({
+            _id: id
+        });
+
+        res.status(200).json({
+            message: "Product delete successfully"
+        });
+
+    } catch (err) {
+        console.log(err);
+
+        res.status(500).json({
+            message: "Server error"
+        })
+    }
+}
+
+export const updateCategory = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const {
+            productName,
+            productCategory,
+            stock,
+            purchase,
+            sellingPrice,
+            ExpiryDate,
+            supplierName,
+        } = req.body;
+
+        const newProductdetails = await productModel.findOneAndUpdate(
+            {
+                _id: id,
+                userId: req.user.id
+            },
+            {
+                productName,
+                productCategory,
+                stock,
+                purchase,
+                sellingPrice,
+                ExpiryDate,
+                supplierName
+            },
+            {
+                new: true,
+                runValidators: true
+            }
+        );
+
+        if (!newProductdetails) {
+            return res.status(404).json({
+                message: "product not found"
+            })
+        }
+
+        res.status(200).json({
+            message: "Product Updated successfully"
+        })
+
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({
+            message: "Server error"
+        })
+    }
+}
+
+export const exportproducts = async (req, res) => {
+    try {
+        const products = await productModel.find({
+            userId: req.user.id
+        }).populate("productCategory", "categoryName");
+
+        const exportData = products.map(product => ({
+            Product: product.productName,
+            Category: product.productCategory?.categoryName,
+            Stock: product.stock,
+            Purchase: product.purchase,
+            Selling: product.sellingPrice,
+            Supplier: product.supplierName,
+            Expiry: product.ExpiryDate
+        }))
+
+        const parser = new Parser();
+        const csv = parser.parse(exportData);
+
+        res.header(
+            "Content-Type",
+            "text/csv"
+        );
+        res.attachment("product.csv")
+        res.send(csv);
+        console.log(csv);
+
+
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({
+            message: "server error"
+        })
+    }
+}
+
+
+export const importProducts = async (req, res) => {
+    try {
+        const buffer = req.file.buffer;
+        const results = [];
+
+        Readable.from(buffer)
+            .pipe(csv())
+            .on("data", (row) => {
+                results.push(row);
+            })
+            .on("end", async () => {
+
+                for (const item of results) {
+
+                    const category = await categoryModel.findOne({
+                        categoryName: item.Category,
+                        userId: req.user.id
+                    });
+
+                    if (!category) {
+                        continue;
+                    }
+
+                    await productModel.create({
+                        productName: item.Product,
+                        productCategory: category._id,
+                        stock: Number(item.Stock),
+                        purchase: Number(item.Purchase),
+                        sellingPrice: Number(item.Selling),
+                        supplierName: item.Supplier,
+                        ExpiryDate: item.Expiry,
+                        userId: req.user.id
+                    });
+                }
+
+                res.status(200).json({
+                    message: "Products imported successfully"
+                });
+            });
+
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({
+            message: "Server Error"
+        });
+    }
+};

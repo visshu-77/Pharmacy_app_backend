@@ -6,8 +6,9 @@ const productSchema = new mongoose.Schema({
             required:true,
         },
         productCategory:{
-            type:String,
-            required:true
+            type:mongoose.Schema.Types.ObjectId,
+            ref:"/dashaboard/categories",
+            required:true,
         },
         stock:{
             type:Number,
