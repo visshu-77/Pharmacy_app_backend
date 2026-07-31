@@ -24,4 +24,4 @@ const categorySchema = new mongoose.Schema(
 
 const category = mongoose.model("/dashaboard/categories", categorySchema);
 
-export default category;
+export default category;    

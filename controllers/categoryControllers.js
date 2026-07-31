@@ -1,5 +1,7 @@
 import category from "../model/category.js";
 import categoryModel from "../model/category.js";
+import productModel from "../model/product.js";
+import mongoose from "mongoose";
 
 export const addCategory = async (req, res) => {
     try {
@@ -15,7 +17,10 @@ export const addCategory = async (req, res) => {
         }
 
         const existingCategory = await categoryModel.findOne({
-            categoryName,
+            categoryName: {
+                $regex: `^${categoryName.trim()}$`,
+                $options: "i"
+            },
             userId: req.user.id
         })
 
@@ -43,9 +48,33 @@ export const addCategory = async (req, res) => {
 
 export const getCategory = async (req, res) => {
     try {
-        const result = await categoryModel.find({
-            userId: req.user.id
-        })
+        const result = await categoryModel.aggregate([
+            {
+                $match: {
+                    userId: new mongoose.Types.ObjectId(req.user.id)
+                }
+            },
+            {
+                $lookup: {
+                    from: "dashboard/products",
+                    localField: "_id",
+                    foreignField: "productCategory",
+                    as: "products"
+                }
+            },
+            {
+                $addFields: {
+                    productCount: {
+                        $size: "$products"
+                    }
+                }
+            },
+            {
+                $project: {
+                    products: 0
+                }
+            }
+        ]);
 
         if (!result) {
             return res.status(401).json({
@@ -130,6 +159,39 @@ export const updatecategory = async (req, res) => {
         console.log(err);
         res.status(500).json({
             message: "server error"
+        })
+    }
+}
+
+export const viewCategory = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const category = await categoryModel.findOne({
+            _id: id,
+            userId: req.user.id
+        });
+
+        if (!category) {
+            return res.status(401).json({
+                message: "Category not found"
+            })
+        }
+
+        const products = await productModel.find({
+            productCategory: id,
+            userId: req.user.id
+        });
+
+        res.status(200).json({
+            category,
+            totalProducts: products.length,
+            products
+        });
+
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({
+            message: "Server Error"
         })
     }
 }

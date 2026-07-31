@@ -191,7 +191,6 @@ export const exportproducts = async (req, res) => {
     }
 }
 
-
 export const importProducts = async (req, res) => {
     try {
         const buffer = req.file.buffer;
@@ -239,3 +238,32 @@ export const importProducts = async (req, res) => {
         });
     }
 };
+
+export const singleProduct = async (req,res) => {
+    try{
+        const { id } = req.params;
+
+        const product = await productModel.findOne({
+            _id: id,
+            userId:req.user.id
+        }).populate("productCategory", "categoryName");
+
+        if(!product){
+            return res.status(404).json({
+                message:"Product not found"
+            })
+        }
+
+        res.status(200).json({
+            message:"Product fetch successfully",
+            product: product,
+        })
+
+
+    }catch(err){
+        console.log(err)
+        res.status(500).json({
+            message:"Server error"
+        })
+    }
+}
