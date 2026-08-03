@@ -267,3 +267,39 @@ export const singleProduct = async (req,res) => {
         })
     }
 }
+
+export const searchProducts = async (req, res) => {
+    try {
+
+        const { search } = req.query;
+
+        if (!search || !search.trim()) {
+            return res.status(400).json({
+                message: "Search product name is required"
+            });
+        }
+
+        const products = await productModel.find({
+            userId: req.user.id,
+            productName: {
+                $regex: search.trim(),
+                $options: "i"
+            }
+        }).select(
+            "productName stock sellingPrice purchase ExpiryDate supplierName productCategory"
+        );
+
+        return res.status(200).json({
+            message: "Products found successfully",
+            products
+        });
+
+    } catch (error) {
+
+        console.log("Search product error:", error);
+
+        return res.status(500).json({
+            message: "Server error"
+        });
+    }
+};
