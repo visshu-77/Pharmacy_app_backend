@@ -1,13 +1,14 @@
 import express from 'express';
 import { addCategory, deleteCategory, getCategory, updatecategory, viewCategory } from "../controllers/categoryControllers.js";
 import { authMiddleware } from '../middleware/authmiddleware.js';
+import { checkSubscription } from '../middleware/subscriptionMiddleware.js';
 
 const router = express();
 
-router.post('/add' ,authMiddleware, addCategory);
-router.get('/get', authMiddleware, getCategory);
-router.delete('/delete/:id', authMiddleware, deleteCategory);
-router.put('/update/:id',authMiddleware, updatecategory);
-router.get('/single/:id',authMiddleware,viewCategory)
+router.post('/add' ,authMiddleware, checkSubscription, addCategory);
+router.get('/get', authMiddleware, checkSubscription, getCategory);
+router.delete('/delete/:id', authMiddleware, checkSubscription, deleteCategory);
+router.put('/update/:id',authMiddleware, checkSubscription, updatecategory);
+router.get('/single/:id',authMiddleware, checkSubscription, viewCategory)
 
 export default router;

@@ -3,6 +3,26 @@ import razorpay from "../config/razorpay.js";
 import crypto from "crypto";
 import { subscriptionPlans } from "../config/subscriptionPlans.js";
 
+import { sendSubscriptionThankYouEmail } from "../services/emailService.js";
+
+import userModel from "../model/users.js";
+import transporter from "../config/mail.js";
+
+
+const calculateEndDate = (startDate, duration) => {
+    const endDate = new Date(startDate);
+
+    if (duration === "monthly") {
+        endDate.setMonth(endDate.getMonth() + 1);
+    } else if (duration === "sixMonths") {
+        endDate.setMonth(endDate.getMonth() + 6);
+    } else if (duration === "yearly") {
+        endDate.setFullYear(endDate.getFullYear() + 1);
+    }
+
+    return endDate;
+};
+
 export const createSubscription = async (req, res) => {
     try {
         const {
@@ -150,6 +170,13 @@ export const verifyPayment = async (req, res) => {
             });
         }
 
+        const user = await userModel.findById(req.user.id);
+
+        if (!user) {
+            return res.status(404).json({
+                message: "user not found"
+            })
+        }
 
         const price = subscriptionPlans?.[plan]?.[duration];
 
@@ -159,17 +186,31 @@ export const verifyPayment = async (req, res) => {
             });
         }
 
-        const startDate = new Date();
-        const endDate = new Date(startDate);
-        if (duration === "monthly") {
-            endDate.setMonth(endDate.getMonth() + 1);
-        }
-        if (duration === "sixMonths") {
-            endDate.setMonth(endDate.getMonth() + 6);
-        }
-        if (duration === "yearly") {
-            endDate.setFullYear(endDate.getFullYear() + 1);
-        }
+        const existingSubscription =
+            await subscriptionModel.findOne({
+                userId: req.user.id,
+                paymentStatus: "paid",
+                subscriptionStatus: {
+                    $in: ["active", "pending"]
+                },
+                endDate: {
+                    $gt: new Date()
+                }
+            }).sort({
+                endDate: -1
+            });
+
+
+        const startDate = existingSubscription
+            ? new Date(existingSubscription.endDate)
+            : new Date();
+
+        const subscriptionStatus =
+            existingSubscription
+                ? "pending"
+                : "active";
+
+        const endDate = calculateEndDate(startDate, duration);
 
         const subscription = await subscriptionModel.create({
             userId: req.user.id,
@@ -180,10 +221,28 @@ export const verifyPayment = async (req, res) => {
             razorpayOrderId: razorpay_order_id,
             razorpayPaymentId: razorpay_payment_id,
             paymentStatus: "paid",
-            subscriptionStatus: "active",
+            subscriptionStatus,
             startDate,
             endDate
         });
+
+
+        try {
+            await sendSubscriptionThankYouEmail({
+                email: user.email,
+                ownerName: user.ownerName,
+                plan,
+                duration,
+                price,
+                startDate,
+                endDate
+            })
+        } catch (emailErr) {
+            console.log(emailErr);
+            return res.status(500).json({
+                message: "Email Error"
+            })
+        }
 
         // Payment is genuine
         return res.status(200).json({
@@ -193,6 +252,197 @@ export const verifyPayment = async (req, res) => {
 
     } catch (error) {
         console.log("Verify payment error:", error);
+
+        return res.status(500).json({
+            message: "Server error"
+        });
+    }
+};
+
+// export const getMySubscription = async (req, res) => {
+//     try {
+//         const subscription = await subscriptionModel.findOne({
+//             userId: req.user.id,
+//             paymentStatus: "paid",
+//         }).sort({ createdAt: -1 });
+
+//         if (!subscription) {
+//             return res.status(200).json({
+//                 hasSubscription: false,
+//                 subscription: null
+//             });
+//         }
+
+//         const now = new Date();
+
+//         if (
+//             subscription.endDate &&
+//             new Date(subscription.endDate) <= now
+//         ) {
+
+//             subscription.subscriptionStatus = "expired";
+
+//             await subscription.save();
+
+//             return res.status(200).json({
+//                 hasSubscription: false,
+//                 subscription: null
+//             });
+//         }
+
+//         return res.status(200).json({
+//             hasSubscription: true,
+//             subscription
+//         });
+
+//     } catch (error) {
+//         console.log("Get subscription error:", error);
+
+//         return res.status(500).json({
+//             message: "Server error"
+//         });
+//     }
+// };
+
+
+// export const getMySubscription = async (req, res) => {
+//     try {
+//         const userId = req.user.id;
+//         const now = new Date();
+
+//         // 1. Find currently active subscription
+//         let activeSubscription = await subscriptionModel.findOne({
+//             userId,
+//             paymentStatus: "paid",
+//             subscriptionStatus: "active",
+//             startDate: { $lte: now },
+//             endDate: { $gt: now }
+//         }).sort({
+//             endDate: -1
+//         });
+
+//         // 2. If active subscription exists, return it
+//         if (activeSubscription) {
+//             return res.status(200).json({
+//                 hasSubscription: true,
+//                 subscription: activeSubscription
+//             });
+//         }
+
+//         // 3. No active subscription
+//         // Find the next pending subscription
+//         const pendingSubscription =
+//             await subscriptionModel.findOne({
+//                 userId,
+//                 paymentStatus: "paid",
+//                 subscriptionStatus: "pending",
+//                 startDate: { $lte: now }
+//             }).sort({
+//                 startDate: 1
+//             });
+
+//         // 4. Activate pending subscription
+//         if (pendingSubscription) {
+
+//             pendingSubscription.subscriptionStatus = "active";
+
+//             await pendingSubscription.save();
+
+//             return res.status(200).json({
+//                 hasSubscription: true,
+//                 subscription: pendingSubscription
+//             });
+//         }
+
+//         // 5. No active or pending subscription
+//         return res.status(200).json({
+//             hasSubscription: false,
+//             subscription: null
+//         });
+
+//     } catch (error) {
+
+//         console.log("Get subscription error:", error);
+
+//         return res.status(500).json({
+//             message: "Server error"
+//         });
+//     }
+// };
+
+export const getMySubscription = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const now = new Date();
+
+        // 1. Mark all expired active subscriptions as expired
+        await subscriptionModel.updateMany(
+            {
+                userId,
+                paymentStatus: "paid",
+                subscriptionStatus: "active",
+                endDate: { $lte: now }
+            },
+            {
+                $set: {
+                    subscriptionStatus: "expired"
+                }
+            }
+        );
+
+        // 2. Find currently active subscription
+        let activeSubscription =
+            await subscriptionModel.findOne({
+                userId,
+                paymentStatus: "paid",
+                subscriptionStatus: "active",
+                startDate: { $lte: now },
+                endDate: { $gt: now }
+            }).sort({
+                endDate: -1
+            });
+
+        // 3. If active subscription exists
+        if (activeSubscription) {
+            return res.status(200).json({
+                hasSubscription: true,
+                subscription: activeSubscription
+            });
+        }
+
+        // 4. Find next pending subscription
+        const pendingSubscription =
+            await subscriptionModel.findOne({
+                userId,
+                paymentStatus: "paid",
+                subscriptionStatus: "pending",
+                startDate: { $lte: now }
+            }).sort({
+                startDate: 1
+            });
+
+        // 5. Activate pending subscription
+        if (pendingSubscription) {
+
+            pendingSubscription.subscriptionStatus = "active";
+
+            await pendingSubscription.save();
+
+            return res.status(200).json({
+                hasSubscription: true,
+                subscription: pendingSubscription
+            });
+        }
+
+        // 6. No subscription
+        return res.status(200).json({
+            hasSubscription: false,
+            subscription: null
+        });
+
+    } catch (error) {
+
+        console.log("Get subscription error:", error);
 
         return res.status(500).json({
             message: "Server error"

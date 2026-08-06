@@ -1,13 +1,13 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/authmiddleware.js';
     
-import { registeruser, getUser, loginUser }  from '../controllers/userControllers.js';
+import { registeruser, getProfile, loginUser, updateProfile }  from '../controllers/userControllers.js';
 import users from '../model/users.js';
 
 const router = express();
 
 router.post('/register', registeruser);
-router.get('/getUsers', getUser);
+router.get('/profile', authMiddleware, getProfile);
 router.post('/login', loginUser);
 router.get('/verify', authMiddleware,
     (req, res) => {
@@ -17,5 +17,7 @@ router.get('/verify', authMiddleware,
         });
     }
 )
+
+router.put("/update-profile", authMiddleware, updateProfile);
 
 export default router;

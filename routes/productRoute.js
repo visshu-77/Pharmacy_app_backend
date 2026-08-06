@@ -1,20 +1,21 @@
 import express from 'express';
 import { addProduct, deleteProduct, exportproducts, getProduct, updateCategory, importProducts, singleProduct,searchProducts } from '../controllers/productControllers.js';
 import { authMiddleware } from '../middleware/authmiddleware.js';
+import { checkSubscription } from "../middleware/subscriptionMiddleware.js";
 import multer from "multer";
 const upload = multer({ storage: multer.memoryStorage() });
 
 const router = express();
 
-router.post('/add',authMiddleware, addProduct);
-router.get('/get',authMiddleware, getProduct);
-router.get("/search", authMiddleware, searchProducts);
-router.delete("/delete/:id",authMiddleware, deleteProduct);
-router.put('/update/:id', authMiddleware, updateCategory);
+router.post('/add',authMiddleware, checkSubscription, addProduct);
+router.get('/get',authMiddleware, checkSubscription, getProduct);
+router.get("/search", authMiddleware, checkSubscription, searchProducts);
+router.delete("/delete/:id",authMiddleware, checkSubscription, deleteProduct);
+router.put('/update/:id', authMiddleware, checkSubscription, updateCategory);
 
-router.get("/exports",authMiddleware, exportproducts);
-router.post("/imports",authMiddleware, upload.single("file"), importProducts);
+router.get("/exports",authMiddleware, checkSubscription, exportproducts);
+router.post("/imports",authMiddleware, checkSubscription, upload.single("file"), importProducts);
 
-router.get('/single/:id', authMiddleware, singleProduct)
+router.get('/single/:id', authMiddleware, checkSubscription, singleProduct)
 
 export default router;
