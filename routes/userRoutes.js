@@ -1,7 +1,7 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/authmiddleware.js';
     
-import { registeruser, getProfile, loginUser, updateProfile }  from '../controllers/userControllers.js';
+import { registeruser, getProfile, loginUser, updateProfile, changePassword }  from '../controllers/userControllers.js';
 import users from '../model/users.js';
 
 const router = express();
@@ -19,5 +19,6 @@ router.get('/verify', authMiddleware,
 )
 
 router.put("/update-profile", authMiddleware, updateProfile);
+router.post('/change-password', authMiddleware, changePassword);
 
 export default router;

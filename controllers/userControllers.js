@@ -1,4 +1,4 @@
-import userModel from '../model/users.js';
+  import userModel from '../model/users.js';
 import bcrypt from "bcrypt";
 
 import jwt from "jsonwebtoken";
@@ -253,3 +253,76 @@ export const updateProfile = async (req, res) => {
         });
     }
 };
+
+export const changePassword = async (req,res) => {
+    try{
+        const {
+            currentPassword,
+            newPassword,
+            confirmPassword
+        } = req.body;
+
+        if(!(currentPassword || newPassword || confirmPassword)){
+            return res.status(400).json({
+                message:"All Password fields are required"
+            })
+        }
+
+        if(newPassword !== confirmPassword){
+            return res.status(400).json({
+                message:"Password and confirm password doesn't match"
+            })
+        }
+        
+        if(newPassword.length < 8){
+            return res.status(400).json({
+                message:"Password should be 8 character long"
+            })
+        }
+
+        const user = await userModel.findById(req.user.id);
+
+        if(!user){
+            return res.status(400).json({
+                message:"User not found"
+            })
+        }
+
+        const isPasswordCorrect = await bcrypt.compare(
+            currentPassword,
+            user.Password
+        );
+
+        if(!isPasswordCorrect){
+            return res.status(400).json({
+                message:"Current Password is incorrect"
+            })
+        }
+
+        const isSamePassword = await bcrypt.compare(
+            newPassword,
+            user.Password
+        )
+
+        if(isSamePassword){
+            return res.status(400).json({
+                message:"New Password should be different form current password"
+            })
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        user.Password = hashedPassword;
+        await user.save();
+
+        return res.status(200).json({
+            message:"Password Changes Successfully"
+        })
+
+    }catch(err){
+        console.log(err);
+        return res.status(500).json({
+            message:"Server Error"
+        })
+    }
+}
