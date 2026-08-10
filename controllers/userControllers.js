@@ -1,5 +1,6 @@
-  import userModel from '../model/users.js';
+import userModel from '../model/users.js';
 import bcrypt from "bcrypt";
+import subscriptionModel from "../model/subscription.js";
 
 import jwt from "jsonwebtoken";
 
@@ -254,37 +255,37 @@ export const updateProfile = async (req, res) => {
     }
 };
 
-export const changePassword = async (req,res) => {
-    try{
+export const changePassword = async (req, res) => {
+    try {
         const {
             currentPassword,
             newPassword,
             confirmPassword
         } = req.body;
 
-        if(!(currentPassword || newPassword || confirmPassword)){
+        if (!(currentPassword || newPassword || confirmPassword)) {
             return res.status(400).json({
-                message:"All Password fields are required"
+                message: "All Password fields are required"
             })
         }
 
-        if(newPassword !== confirmPassword){
+        if (newPassword !== confirmPassword) {
             return res.status(400).json({
-                message:"Password and confirm password doesn't match"
+                message: "Password and confirm password doesn't match"
             })
         }
-        
-        if(newPassword.length < 8){
+
+        if (newPassword.length < 8) {
             return res.status(400).json({
-                message:"Password should be 8 character long"
+                message: "Password should be 8 character long"
             })
         }
 
         const user = await userModel.findById(req.user.id);
 
-        if(!user){
+        if (!user) {
             return res.status(400).json({
-                message:"User not found"
+                message: "User not found"
             })
         }
 
@@ -293,9 +294,9 @@ export const changePassword = async (req,res) => {
             user.Password
         );
 
-        if(!isPasswordCorrect){
+        if (!isPasswordCorrect) {
             return res.status(400).json({
-                message:"Current Password is incorrect"
+                message: "Current Password is incorrect"
             })
         }
 
@@ -304,9 +305,9 @@ export const changePassword = async (req,res) => {
             user.Password
         )
 
-        if(isSamePassword){
+        if (isSamePassword) {
             return res.status(400).json({
-                message:"New Password should be different form current password"
+                message: "New Password should be different form current password"
             })
         }
 
@@ -316,13 +317,181 @@ export const changePassword = async (req,res) => {
         await user.save();
 
         return res.status(200).json({
-            message:"Password Changes Successfully"
+            message: "Password Changes Successfully"
         })
 
-    }catch(err){
+    } catch (err) {
         console.log(err);
         return res.status(500).json({
-            message:"Server Error"
+            message: "Server Error"
         })
     }
 }
+
+export const updateNotifcationSettings = async (req, res) => {
+    try {
+        const {
+            emailNotifications,
+            orderNotifications,
+            lowStockAlerts,
+            subscriptionExpiryAlerts,
+            paymentNotifications,
+            promotionalUpdates
+        } = req.body;
+
+        const user = await userModel.findById(req.user.id);
+
+        if (!user) {
+            return res.status(400).json({
+                message: "User Not found"
+            })
+        }
+
+        user.notificationSettings = {
+            emailNotifications: Boolean(emailNotifications),
+            orderNotifications: Boolean(orderNotifications),
+            lowStockAlerts: Boolean(lowStockAlerts),
+            subscriptionExpiryAlerts: Boolean(subscriptionExpiryAlerts),
+            paymentNotifications: Boolean(paymentNotifications),
+            promotionalUpdates: Boolean(promotionalUpdates)
+        }
+
+        await user.save();
+
+        return res.status(200).json({
+            message: "Notification Setting changed successfully",
+            notificationSettings: user.notificationSettings
+        })
+
+
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({
+            message: "Server Error"
+        })
+    }
+}
+
+export const getNotificationSettings = async (req, res) => {
+    try {
+        const user = await userModel.findById(req.user.id).select("notificationSettings");
+        if (!user) {
+            return res.status(404).json({
+                message: "user not found"
+            })
+        }
+
+        return res.status(200).json({
+            notificationSettings: user.notificationSettings
+        })
+    } catch (err) {
+        console.log(err)
+        return res.status(500).json({
+            message: "Server Error"
+        })
+    }
+}
+
+export const getPreference = async (req, res) => {
+    try {
+        const user = await userModel.findById(req.user.id).select("preferences");
+        if (!user) {
+            return res.status(400).json({
+                message: "user not found"
+            })
+        }
+
+        return res.status(200).json({
+            preferences: user.preferences
+        });
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({
+            message: "Server Error"
+        })
+    }
+}
+
+export const updatePreference = async (req, res) => {
+    try {
+        const {
+            language,
+            currency,
+            timezone,
+            dateFormat,
+            defaultPage,
+            theme
+        } = req.body;
+
+        const user = await userModel.findById(req.user.id);
+        if (!user) {
+            return res.status(400).json({
+                message: "user not found"
+            })
+        }
+
+        user.preferences = {
+            language,
+            currency,
+            timezone,
+            dateFormat,
+            defaultPage,
+            theme
+        }
+
+        await user.save();
+        return res.status(200).json({
+            message: "Preferences update successfully",
+            preferences: user.preferences
+        })
+
+    } catch (err) {
+        console.log(err)
+        return res.status(500).json({
+            message: "Server Error"
+        })
+    }
+}
+
+export const getBillingDetails = async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        const subscriptions = await subscriptionModel
+            .find({
+                userId,
+                paymentStatus: "paid"
+            })
+            .sort({
+                createdAt: -1
+            });
+
+        if (!subscriptions.length) {
+            return res.status(200).json({
+                currentSubscription: null,
+                paymentHistory: []
+            });
+        }
+
+        const now = new Date();
+
+        const currentSubscription = subscriptions.find(
+            (subscription) =>
+                subscription.subscriptionStatus === "active" &&
+                new Date(subscription.startDate) <= now &&
+                new Date(subscription.endDate) > now
+        );
+
+        return res.status(200).json({
+            currentSubscription: currentSubscription || null,
+            paymentHistory: subscriptions
+        });
+
+    } catch (err) {
+        console.log(err);
+
+        return res.status(500).json({
+            message: "Server Error"
+        });
+    }
+};
