@@ -11,6 +11,7 @@ import productRoutes from './routes/productRoute.js';
 import categoryRoutes from "./routes/categoryRoute.js";
 import orderRoutes from "./routes/orderRoute.js";
 import subscriptionRoutes from './routes/subscriptionRoutes.js';
+import reportRoutes from "./routes/reportRoute.js";
 
 connectDb();
 
@@ -21,10 +22,11 @@ app.use(cors());
 
 //Routes
 app.use('/api', userRoutes);
-app.use('/product', productRoutes)
-app.use('/category', categoryRoutes)
-app.use('/order', orderRoutes)
+app.use('/product', productRoutes);
+app.use('/category', categoryRoutes);
+app.use('/order', orderRoutes);
 app.use('/subscription', subscriptionRoutes);
+app.use('/report', reportRoutes);
 
 app.get('/',(req,res)=>{
     res.send("backed is running")
