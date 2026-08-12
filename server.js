@@ -12,6 +12,8 @@ import categoryRoutes from "./routes/categoryRoute.js";
 import orderRoutes from "./routes/orderRoute.js";
 import subscriptionRoutes from './routes/subscriptionRoutes.js';
 import reportRoutes from "./routes/reportRoute.js";
+import aiRoutes from "./routes/aiRoutes.js";
+import supplierRoutes from "./routes/supplierRoute.js";
 
 connectDb();
 
@@ -27,6 +29,8 @@ app.use('/category', categoryRoutes);
 app.use('/order', orderRoutes);
 app.use('/subscription', subscriptionRoutes);
 app.use('/report', reportRoutes);
+app.use('/ai', aiRoutes);
+app.use('/supplier', supplierRoutes);
 
 app.get('/',(req,res)=>{
     res.send("backed is running")
