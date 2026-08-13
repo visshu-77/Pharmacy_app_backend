@@ -203,67 +203,104 @@ export const importProducts = async (req, res) => {
             })
             .on("end", async () => {
 
-                for (const item of results) {
+                try {
 
-                    const category = await categoryModel.findOne({
-                        categoryName: item.Category,
-                        userId: req.user.id
-                    });
+                    for (const item of results) {
 
-                    if (!category) {
-                        continue;
+                        // -----------------------------
+                        // Find existing category
+                        // -----------------------------
+                        let category = await categoryModel.findOne({
+                            categoryName: item.Category?.trim(),
+                            userId: req.user.id
+                        });
+
+                        // -----------------------------
+                        // Create category if not found
+                        // -----------------------------
+                        if (!category) {
+
+                            category = await categoryModel.create({
+                                categoryName: item.Category?.trim(),
+                                userId: req.user.id
+                            });
+
+                            console.log(
+                                "New category created:",
+                                category.categoryName
+                            );
+                        }
+
+                        // -----------------------------
+                        // Create product
+                        // -----------------------------
+                        await productModel.create({
+                            productName: item.Product?.trim(),
+                            productCategory: category._id,
+                            stock: Number(item.Stock) || 0,
+                            purchase: Number(item.Purchase) || 0,
+                            sellingPrice: Number(item.Selling) || 0,
+                            supplierName: item.Supplier?.trim() || "",
+                            ExpiryDate:
+                                item.Expiry &&
+                                    item.Expiry.trim() !== "" &&
+                                    item.Expiry.trim().toLowerCase() !== "n/a"
+                                    ? new Date(item.Expiry)
+                                    : null,
+                            userId: req.user.id
+                        });
                     }
 
-                    await productModel.create({
-                        productName: item.Product,
-                        productCategory: category._id,
-                        stock: Number(item.Stock),
-                        purchase: Number(item.Purchase),
-                        sellingPrice: Number(item.Selling),
-                        supplierName: item.Supplier,
-                        ExpiryDate: item.Expiry,
-                        userId: req.user.id
+                    return res.status(200).json({
+                        message: "Products imported successfully",
+                        importedCount: results.length
+                    });
+
+                } catch (error) {
+
+                    console.log("Import processing error:", error);
+
+                    return res.status(500).json({
+                        message: "Failed to import products"
                     });
                 }
-
-                res.status(200).json({
-                    message: "Products imported successfully"
-                });
             });
 
     } catch (err) {
-        console.log(err);
-        res.status(500).json({
+
+        console.log("Import error:", err);
+
+        return res.status(500).json({
             message: "Server Error"
         });
     }
 };
 
-export const singleProduct = async (req,res) => {
-    try{
+export const singleProduct = async (req, res) => {
+    try {
         const { id } = req.params;
 
         const product = await productModel.findOne({
             _id: id,
-            userId:req.user.id
+            userId: req.user.id
         }).populate("productCategory", "categoryName");
 
-        if(!product){
+        if (!product) {
             return res.status(404).json({
-                message:"Product not found"
+                message: "Product not found"
             })
         }
 
         res.status(200).json({
-            message:"Product fetch successfully",
+            message: "Product fetch successfully",
             product: product,
         })
 
 
-    }catch(err){
+    } catch (err) {
         console.log(err)
         res.status(500).json({
-            message:"Server error"
+            message: "Server error"
         })
     }
 }
@@ -297,6 +334,59 @@ export const searchProducts = async (req, res) => {
     } catch (error) {
 
         console.log("Search product error:", error);
+
+        return res.status(500).json({
+            message: "Server error"
+        });
+    }
+};
+
+export const deleteSelectedProducts = async (req, res) => {
+    try {
+
+        const { productIds } = req.body;
+
+        if (!Array.isArray(productIds) || productIds.length === 0) {
+            return res.status(400).json({
+                message: "No products selected"
+            });
+        }
+
+        const result = await productModel.deleteMany({
+            _id: { $in: productIds },
+            userId: req.user.id
+        });
+
+        return res.status(200).json({
+            message: "Selected products deleted successfully",
+            deletedCount: result.deletedCount
+        });
+
+    } catch (error) {
+
+        console.log("Delete selected products error:", error);
+
+        return res.status(500).json({
+            message: "Server error"
+        });
+    }
+};
+
+export const deleteAllProducts = async (req, res) => {
+    try {
+
+        const result = await productModel.deleteMany({
+            userId: req.user.id
+        });
+
+        return res.status(200).json({
+            message: "All products deleted successfully",
+            deletedCount: result.deletedCount
+        });
+
+    } catch (error) {
+
+        console.log("Delete all products error:", error);
 
         return res.status(500).json({
             message: "Server error"

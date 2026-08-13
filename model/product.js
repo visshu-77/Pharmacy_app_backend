@@ -22,7 +22,7 @@ const productSchema = new mongoose.Schema({
     },
     ExpiryDate: {
         type: Date,
-        required: true
+        default:null
     },
     supplierId: {
         type: mongoose.Schema.Types.ObjectId,
