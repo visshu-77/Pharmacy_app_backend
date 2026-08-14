@@ -44,7 +44,7 @@ export const addCategory = async (req, res) => {
     } catch (error) {
         console.log("server error", error);
     }
-}
+};
 
 export const getCategory = async (req, res) => {
     try {
@@ -89,38 +89,40 @@ export const getCategory = async (req, res) => {
     } catch (err) {
         console.log("server error ", err);
     }
-}
+};
 
 export const deleteCategory = async (req, res) => {
     try {
         const { id } = req.params;
 
-        const deleteCategory = await categoryModel.find({
+        const category = await categoryModel.findOne({
+            _id: id,
             userId: req.user.id
-        })
+        });
 
-        if (!deleteCategory) {
+        if (!category) {
             return res.status(404).json({
                 message: "Category not found"
-            })
+            });
         }
 
         await categoryModel.deleteOne({
-            _id: id
-        })
+            _id: id,
+            userId: req.user.id
+        });
 
         res.status(200).json({
-            message: "Category delete successfully"
-        })
-
+            message: "Category deleted successfully"
+        });
 
     } catch (err) {
         console.log(err);
+
         res.status(500).json({
             message: "Server error"
-        })
+        });
     }
-}
+};
 
 export const updatecategory = async (req, res) => {
     try {
@@ -161,7 +163,7 @@ export const updatecategory = async (req, res) => {
             message: "server error"
         })
     }
-}
+};
 
 export const viewCategory = async (req, res) => {
     try {
@@ -194,4 +196,53 @@ export const viewCategory = async (req, res) => {
             message: "Server Error"
         })
     }
-}
+};
+
+export const deleteSelectedCategories = async (req, res) => {
+    try {
+        const { ids } = req.body;
+
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({
+                message: "Category IDs are required"
+            });
+        }
+
+        const result = await categoryModel.deleteMany({
+            _id: { $in: ids },
+            userId: req.user.id
+        });
+
+        res.status(200).json({
+            message: "Selected categories deleted successfully",
+            deletedCount: result.deletedCount
+        });
+
+    } catch (err) {
+        console.log("Delete selected categories error:", err);
+
+        res.status(500).json({
+            message: "Server error"
+        });
+    }
+};
+
+export const deleteAllCategories = async (req, res) => {
+    try {
+        const result = await categoryModel.deleteMany({
+            userId: req.user.id
+        });
+
+        res.status(200).json({
+            message: "All categories deleted successfully",
+            deletedCount: result.deletedCount
+        });
+
+    } catch (err) {
+        console.log("Delete all categories error:", err);
+
+        res.status(500).json({
+            message: "Server error"
+        });
+    }
+};

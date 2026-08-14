@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import orderModel from "../model/order.js";
 import subscriptionModel from "../model/subscription.js";
 import userModel from "../model/users.js";
+import { Parser } from "json2csv";
 
 const getDateRange = (range) => {
     const now = new Date();
@@ -195,11 +196,78 @@ export const getSalesOverview = async (req, res) => {
     }
 };
 
+// export const getTopSellingProducts = async (req, res) => {
+//     try {
+//         const userId = new mongoose.Types.ObjectId(req.user.id);
+
+//         const products = await orderModel.aggregate([
+//             {
+//                 $match: {
+//                     userId: userId,
+//                     paymentStatus: "Paid"
+//                 }
+//             },
+
+//             {
+//                 $unwind: "$items"
+//             },
+
+//             {
+//                 $group: {
+//                     _id: "$items.productId",
+
+//                     productName: {
+//                         $first: "$items.productName"
+//                     },
+
+//                     quantitySold: {
+//                         $sum: "$items.quantity"
+//                     },
+
+//                     totalSales: {
+//                         $sum: "$items.total"
+//                     }
+//                 }
+//             },
+
+//             {
+//                 $sort: {
+//                     quantitySold: -1
+//                 }
+//             },
+
+//             {
+//                 $limit: 5
+//             }
+//         ]);
+
+//         return res.status(200).json({
+//             products
+//         });
+
+//     } catch (error) {
+//         console.log("Top selling products error:", error);
+
+//         return res.status(500).json({
+//             message: "Server Error"
+//         });
+//     }
+// };
+
 export const getTopSellingProducts = async (req, res) => {
     try {
+
         const userId = new mongoose.Types.ObjectId(req.user.id);
 
+        const sortBy = req.query.sortBy || "quantity";
+
+        const sortField =
+            sortBy === "price"
+                ? "totalSales"
+                : "quantitySold";
+
         const products = await orderModel.aggregate([
+
             {
                 $match: {
                     userId: userId,
@@ -231,13 +299,14 @@ export const getTopSellingProducts = async (req, res) => {
 
             {
                 $sort: {
-                    quantitySold: -1
+                    [sortField]: -1
                 }
             },
 
             {
                 $limit: 5
             }
+
         ]);
 
         return res.status(200).json({
@@ -245,7 +314,11 @@ export const getTopSellingProducts = async (req, res) => {
         });
 
     } catch (error) {
-        console.log("Top selling products error:", error);
+
+        console.log(
+            "Top selling products error:",
+            error
+        );
 
         return res.status(500).json({
             message: "Server Error"
@@ -338,7 +411,6 @@ export const getRecentTransactions = async (req, res) => {
     try {
         const userId = new mongoose.Types.ObjectId(req.user.id);
 
-        // Filters from frontend
         const {
             customerName = "",
             productName = "",
@@ -348,17 +420,21 @@ export const getRecentTransactions = async (req, res) => {
             type = "all"
         } = req.query;
 
-        /*
-        |--------------------------------------------------------------------------
-        | Get Orders
-        |--------------------------------------------------------------------------
-        */
+        const page = Math.max(Number(req.query.page) || 1, 1);
+        const limit = Math.max(Number(req.query.limit) || 10, 1);
+
+        const skip = (page - 1) * limit;
+        console.log("Transaction filters:", req.query);
+
+        // =====================================================
+        // ORDERS
+        // =====================================================
 
         const orderQuery = {
             userId
         };
 
-        // Customer name filter
+        // Customer
         if (customerName.trim()) {
             orderQuery.customerName = {
                 $regex: customerName.trim(),
@@ -366,17 +442,23 @@ export const getRecentTransactions = async (req, res) => {
             };
         }
 
-        // Status filter
+        // Product
+        if (productName.trim()) {
+            orderQuery["items.productName"] = {
+                $regex: productName.trim(),
+                $options: "i"
+            };
+        }
+
+        // Status
         if (status !== "all") {
-            orderQuery.paymentStatus = status;
+            orderQuery.paymentStatus = {
+                $regex: `^${status.trim()}$`,
+                $options: "i"
+            };
         }
 
-        // Payment type filter
-        if (type !== "all" && type !== "Razorpay") {
-            orderQuery.paymentMethod = type;
-        }
-
-        // Amount filter
+        // Amount
         if (amount) {
             const numericAmount = Number(amount);
 
@@ -385,7 +467,15 @@ export const getRecentTransactions = async (req, res) => {
             }
         }
 
-        // Date filter
+        // Payment Type
+        if (type !== "all") {
+            orderQuery.paymentMethod = {
+                $regex: `^${type.trim()}$`,
+                $options: "i"
+            };
+        }
+
+        // Date
         if (date) {
             const startDate = new Date(date);
             startDate.setHours(0, 0, 0, 0);
@@ -399,50 +489,27 @@ export const getRecentTransactions = async (req, res) => {
             };
         }
 
+        console.log("Order query:", orderQuery);
+
         const orders = await orderModel
             .find(orderQuery)
             .sort({ createdAt: -1 });
 
 
-        /*
-        |--------------------------------------------------------------------------
-        | Product Name Filter
-        |--------------------------------------------------------------------------
-        */
-
-        let filteredOrders = orders;
-
-        if (productName.trim()) {
-            const searchProduct = productName.trim().toLowerCase();
-
-            filteredOrders = orders.filter(order =>
-                order.items.some(item =>
-                    item.productName
-                        ?.toLowerCase()
-                        .includes(searchProduct)
-                )
-            );
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | Get Subscriptions
-        |--------------------------------------------------------------------------
-        */
+        // =====================================================
+        // SUBSCRIPTIONS
+        // =====================================================
 
         const subscriptionQuery = {
             userId
         };
 
-        // Status filter for subscription
+        // Status
         if (status !== "all") {
-            subscriptionQuery.paymentStatus = status.toLowerCase();
-        }
-
-        // Payment type
-        if (type !== "all" && type !== "Cash" && type !== "Card" && type !== "UPI") {
-            subscriptionQuery.paymentMethod = type;
+            subscriptionQuery.paymentStatus = {
+                $regex: `^${status.trim()}$`,
+                $options: "i"
+            };
         }
 
         // Amount
@@ -452,6 +519,14 @@ export const getRecentTransactions = async (req, res) => {
             if (!isNaN(numericAmount)) {
                 subscriptionQuery.price = numericAmount;
             }
+        }
+
+        // Payment type
+        if (type !== "all") {
+            subscriptionQuery.paymentMethod = {
+                $regex: `^${type.trim()}$`,
+                $options: "i"
+            };
         }
 
         // Date
@@ -468,88 +543,52 @@ export const getRecentTransactions = async (req, res) => {
             };
         }
 
-        const subscriptions = await subscriptionModel
-            .find(subscriptionQuery)
-            .sort({ createdAt: -1 });
-
-
         /*
-        |--------------------------------------------------------------------------
-        | Product Name filter for subscriptions
-        |--------------------------------------------------------------------------
-        */
+         * If customerName or productName is being searched,
+         * subscriptions don't match those fields.
+         */
 
-        let filteredSubscriptions = subscriptions;
+        let subscriptions = [];
 
-        if (productName.trim()) {
-            filteredSubscriptions = [];
+        if (!customerName.trim() && !productName.trim()) {
+            subscriptions = await subscriptionModel
+                .find(subscriptionQuery)
+                .sort({ createdAt: -1 });
         }
 
 
-        /*
-        |--------------------------------------------------------------------------
-        | Customer Name filter
-        |--------------------------------------------------------------------------
-        |
-        | Subscription doesn't have customerName.
-        | Therefore, if customerName is searched,
-        | don't return subscriptions.
-        |
-        */
+        // =====================================================
+        // FORMAT ORDERS
+        // =====================================================
 
-        if (customerName.trim()) {
-            filteredSubscriptions = [];
-        }
+        const orderTransactions = orders.map(order => ({
+            transactionId: order.invoiceNumber,
 
+            customerName:
+                order.customerName || "Walk-in Customer",
 
-        /*
-        |--------------------------------------------------------------------------
-        | Payment Type Filter
-        |--------------------------------------------------------------------------
-        */
+            transactionName: order.items
+                .map(item => item.productName)
+                .join(", "),
 
-        let finalOrders = filteredOrders;
-        let finalSubscriptions = filteredSubscriptions;
+            amount: order.grandTotal,
 
-        if (type !== "all") {
-            finalOrders = filteredOrders.filter(order =>
-                order.paymentMethod === type
-            );
+            status: order.paymentStatus,
 
-            finalSubscriptions = filteredSubscriptions.filter(subscription =>
-                subscription.paymentMethod === type
-            );
-        }
+            date: order.createdAt,
+
+            type: order.paymentMethod,
+
+            transactionType: "order"
+        }));
 
 
-        /*
-        |--------------------------------------------------------------------------
-        | Combine Transactions
-        |--------------------------------------------------------------------------
-        */
+        // =====================================================
+        // FORMAT SUBSCRIPTIONS
+        // =====================================================
 
-        const transactions = [
-            ...finalOrders.map(order => ({
-                transactionId: order.invoiceNumber,
-
-                customerName: order.customerName || "Walk-in Customer",
-
-                productName: order.items
-                    .map(item => item.productName)
-                    .join(", "),
-
-                amount: order.grandTotal,
-
-                status: order.paymentStatus,
-
-                date: order.createdAt,
-
-                type: order.paymentMethod,
-
-                transactionType: "order"
-            })),
-
-            ...finalSubscriptions.map(subscription => ({
+        const subscriptionTransactions = subscriptions.map(
+            subscription => ({
                 transactionId:
                     subscription.razorpayPaymentId ||
                     subscription.razorpayOrderId ||
@@ -557,7 +596,8 @@ export const getRecentTransactions = async (req, res) => {
 
                 customerName: "Subscription",
 
-                productName: `${subscription.plan} - ${subscription.duration}`,
+                transactionName:
+                    `${subscription.plan} - ${subscription.duration}`,
 
                 amount: subscription.price,
 
@@ -568,25 +608,46 @@ export const getRecentTransactions = async (req, res) => {
                 type: subscription.paymentMethod,
 
                 transactionType: "subscription"
-            }))
+            })
+        );
+
+
+        // =====================================================
+        // COMBINE
+        // =====================================================
+
+        const transactions = [
+            ...orderTransactions,
+            ...subscriptionTransactions
         ];
 
 
-        /*
-        |--------------------------------------------------------------------------
-        | Sort latest transaction first
-        |--------------------------------------------------------------------------
-        */
-
+        // Latest first
         transactions.sort(
             (a, b) =>
                 new Date(b.date) - new Date(a.date)
         );
 
+        const totalTransactions = transactions.length;
+
+        const totalPages = Math.ceil(totalTransactions / limit);
+
+        const paginatedTransactions = transactions.slice(
+            skip,
+            skip + limit
+        );
+
 
         return res.status(200).json({
             message: "Recent transactions fetched successfully",
-            transactions
+            transactions: paginatedTransactions,
+
+            pagination: {
+                currentPage: page,
+                limit,
+                totalTransactions,
+                totalPages
+            }
         });
 
     } catch (error) {
@@ -598,6 +659,78 @@ export const getRecentTransactions = async (req, res) => {
 
         return res.status(500).json({
             message: "Server Error"
+        });
+    }
+};
+
+export const exportReport = async (req, res) => {
+    try {
+        const userId = new mongoose.Types.ObjectId(req.user.id);
+
+        const orders = await orderModel
+            .find({
+                userId
+            })
+            .sort({ createdAt: -1 })
+            .lean();
+
+        const reportData = [];
+
+        orders.forEach((order) => {
+
+            order.items.forEach((item) => {
+
+                reportData.push({
+                    transactionId: order.invoiceNumber || "",
+                    customerName: order.customerName || "Walk-in Customer",
+                    productName: item.productName || "",
+                    quantity: item.quantity || 0,
+                    amount: item.total || 0,
+                    status: order.paymentStatus || "",
+                    paymentType: order.paymentMethod || "",
+                    date: order.createdAt
+                        ? new Date(order.createdAt).toLocaleDateString("en-IN")
+                        : ""
+                });
+
+            });
+
+        });
+
+        if (reportData.length === 0) {
+            return res.status(404).json({
+                message: "No report data available"
+            });
+        }
+
+        const fields = [
+            "transactionId",
+            "customerName",
+            "productName",
+            "quantity",
+            "amount",
+            "status",
+            "paymentType",
+            "date"
+        ];
+
+        const parser = new Parser({
+            fields
+        });
+
+        const csv = parser.parse(reportData);
+
+        res.header("Content-Type", "text/csv");
+        res.attachment("sales-report.csv");
+
+        return res.send(csv);
+
+    } catch (error) {
+
+        console.log("Export report error:", error);
+
+        return res.status(500).json({
+            message: "Failed to export report"
         });
     }
 };

@@ -4,7 +4,8 @@ import {
     getSalesOverview,
     getTopSellingProducts,
     getCategoryPerformance,
-    getRecentTransactions
+    getRecentTransactions,
+    exportReport
 } from "../controllers/reportControllers.js";
 import { authMiddleware } from "../middleware/authmiddleware.js";
 
@@ -15,6 +16,7 @@ router.get("/sales-overview", authMiddleware, getSalesOverview);
 router.get("/top-selling-products", authMiddleware, getTopSellingProducts);
 router.get("/category-performance", authMiddleware, getCategoryPerformance);
 router.get("/recent-transactions", authMiddleware, getRecentTransactions);
+router.get('/export', authMiddleware, exportReport);
 
 
 export default router;
