@@ -1,13 +1,17 @@
 import mongoose from "mongoose";
 
 import orderModel from "../model/order.js";
-import productModel from "../model/product.js"
+import productModel from "../model/product.js";
+import supplierModel from "../model/Supplier.js";
 
 export const getDashboardSummary = async (req, res) => {
 
     try {
 
         const userId = new mongoose.Types.ObjectId(req.user.id);
+        const totalProducts = await productModel.countDocuments({
+            userId
+        });
 
         const today = new Date();
 
@@ -59,6 +63,36 @@ export const getDashboardSummary = async (req, res) => {
                 $lt: 50
             }
         });
+        // ==========================================
+        // MONTHLY REVENUE
+        // ==========================================
+
+        const startOfMonth = new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            1
+        );
+
+        const startOfNextMonth = new Date(
+            today.getFullYear(),
+            today.getMonth() + 1,
+            1
+        );
+
+        const monthlyOrders = await orderModel.find({
+            userId,
+            paymentStatus: "Paid",
+            createdAt: {
+                $gte: startOfMonth,
+                $lt: startOfNextMonth
+            }
+        });
+
+        const monthlyRevenue = monthlyOrders.reduce(
+            (total, order) =>
+                total + Number(order.grandTotal || 0),
+            0
+        );
 
         // -------------------------
         // Expiring Soon
@@ -70,13 +104,23 @@ export const getDashboardSummary = async (req, res) => {
             fiveDaysLater.getDate() + 5
         );
 
+        const thirtyDaysLater = new Date(startOfDay);
+
+        thirtyDaysLater.setDate(
+            thirtyDaysLater.getDate() + 30
+        );
+
         const expiringSoon = await productModel.countDocuments({
             userId,
 
             ExpiryDate: {
                 $gte: startOfDay,
-                $lte: fiveDaysLater
+                $lte: thirtyDaysLater
             }
+        });
+
+        const totalSuppliers = await supplierModel.countDocuments({
+            userId
         });
 
         return res.status(200).json({
@@ -87,7 +131,10 @@ export const getDashboardSummary = async (req, res) => {
                 todaysRevenue,
                 ordersToday,
                 lowStock,
-                expiringSoon
+                expiringSoon,
+                totalProducts,
+                totalSuppliers,
+                monthlyRevenue
             }
 
         });
