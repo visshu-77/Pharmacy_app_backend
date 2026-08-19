@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import orderModel from "../model/order.js";
 import productModel from "../model/product.js";
 import supplierModel from "../model/Supplier.js";
+import categoryModel from "../model/category.js";
 
 export const getDashboardSummary = async (req, res) => {
 
@@ -94,6 +95,45 @@ export const getDashboardSummary = async (req, res) => {
             0
         );
 
+        // ==========================================
+        // THIS YEAR REVENUE
+        // ==========================================
+
+        const startOfYear = new Date(
+            today.getFullYear(),
+            0,
+            1
+        );
+
+        const startOfNextYear = new Date(
+            today.getFullYear() + 1,
+            0,
+            1
+        );
+
+        const yearlyOrders = await orderModel.find({
+            userId,
+            paymentStatus: "Paid",
+            createdAt: {
+                $gte: startOfYear,
+                $lt: startOfNextYear
+            }
+        });
+
+        const yearlyRevenue = yearlyOrders.reduce(
+            (total, order) =>
+                total + Number(order.grandTotal || 0),
+            0
+        );
+
+        // ==========================================
+        // TOTAL CATEGORIES
+        // ==========================================
+
+        const totalCategories = await categoryModel.countDocuments({
+            userId
+        });
+
         // -------------------------
         // Expiring Soon
         // -------------------------
@@ -134,7 +174,9 @@ export const getDashboardSummary = async (req, res) => {
                 expiringSoon,
                 totalProducts,
                 totalSuppliers,
-                monthlyRevenue
+                monthlyRevenue,
+                yearlyRevenue,
+                totalCategories
             }
 
         });
