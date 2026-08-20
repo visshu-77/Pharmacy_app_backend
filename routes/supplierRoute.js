@@ -8,7 +8,8 @@ import {
     deleteSupplier,
     importSuppliers,
     deleteSelectedSuppliers,
-    deleteAllSuppliers
+    deleteAllSuppliers,
+    searchSuppliers
 } from "../controllers/supplierController.js";
 
 import { authMiddleware } from "../middleware/authmiddleware.js";
@@ -21,6 +22,7 @@ router.post(
     createSupplier
 );
 router.get('/all-supplier', authMiddleware, getSuppliers);
+router.get('/search', authMiddleware, searchSuppliers);
 router.get('/single/:id', authMiddleware, getSupplierById);
 router.put('/update/:id', authMiddleware, updateSupplier);
 router.delete('/delete/:id', authMiddleware, deleteSupplier);

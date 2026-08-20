@@ -325,3 +325,38 @@ export const deleteAllSuppliers = async (req, res) => {
         });
     }
 };
+
+export const searchSuppliers = async (req, res) => {
+    try {
+        const { name } = req.query;
+
+        if (!name || !name.trim()) {
+            return res.status(200).json({
+                suppliers: []
+            });
+        }
+
+        const suppliers = await supplierModel
+            .find({
+                userId: req.user.id,
+                supplierName: {
+                    $regex: name.trim(),
+                    $options: "i"
+                }
+            })
+            .select("_id supplierName phone email")
+            .limit(10);
+
+        return res.status(200).json({
+            suppliers
+        });
+
+    } catch (error) {
+
+        console.log("Supplier search error:", error);
+
+        return res.status(500).json({
+            message: "Failed to search suppliers"
+        });
+    }
+};

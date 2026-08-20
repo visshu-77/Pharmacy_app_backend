@@ -17,7 +17,7 @@ export const addProduct = async (req, res) => {
             supplierName,
         } = req.body;
 
-        if (!(productName && productCategory && stock && ExpiryDate)) {
+        if (!(productName && productCategory && stock && supplierName)) {
             return res.status(401).json({
                 message: "fields are required"
             });
