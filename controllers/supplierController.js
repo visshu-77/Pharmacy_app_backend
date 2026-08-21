@@ -13,12 +13,24 @@ export const createSupplier = async (req, res) => {
             gstNumber
         } = req.body;
 
-        if (!supplierName || !phone) {
+        let message = "";
 
+        if(!supplierName){
+            message = "Supplier Name is Required";
+        }else if(!phone){
+            message = "Phone number is required";
+        }else if(!address){
+            message = "Address is required";
+        }else if(!city){
+            message = "City is required";
+        }else if(phone == 10){
+            message = "Phone number should be 10 digits"
+        }
+
+        if (message) {
             return res.status(400).json({
-                message: "Supplier name and phone are required"
+                message
             });
-
         }
 
         const userId = req.user.id;

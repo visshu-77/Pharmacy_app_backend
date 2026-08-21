@@ -16,7 +16,7 @@ import {
 
 import users from '../model/users.js';
 
-const router = express();
+const router = express.Router();
 
 router.post('/register', registeruser);
 router.get('/profile', authMiddleware, getProfile);
@@ -25,7 +25,6 @@ router.get('/verify', authMiddleware,
     (req, res) => {
         res.status(200).json({
             message: "Token Valid",
-            users: req.users
         });
     }
 )

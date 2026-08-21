@@ -26,7 +26,8 @@ const productSchema = new mongoose.Schema({
     },
     supplierId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "dashboard/suppliers"
+        ref: "dashboard/suppliers",
+        required:true,
     },
     userId: {
         type: mongoose.Schema.Types.ObjectId,

@@ -17,15 +17,25 @@ export const addProduct = async (req, res) => {
             supplierName,
         } = req.body;
 
-        if (!(productName && productCategory && stock && supplierName)) {
-            return res.status(401).json({
-                message: "fields are required"
-            });
+        let message = "";
+
+        if(!productName){
+            message = "Product Name is required";
+        }else if(!productCategory){
+            message = "Product Category is required";
+        }else if (stock === undefined || stock === null || stock === ""){
+            message = "Stock is required";
+        }else if(!sellingPrice){
+            message = "Selling Price is required";
+        }else if(!supplierName){
+            message = "Supplier Name is required"
+        }else if(stock < 0){
+            message = "Stock should be greater then 0"
         }
 
-        if (stock < 0) {
-            return res.status(404).json({
-                message: "Stock should be greater than 0"
+        if (message) {
+            return res.status(400).json({
+                message
             });
         }
 

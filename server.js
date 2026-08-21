@@ -15,15 +15,23 @@ import reportRoutes from "./routes/reportRoute.js";
 import aiRoutes from "./routes/aiRoutes.js";
 import supplierRoutes from "./routes/supplierRoute.js";
 import dashboardRoutes from "./routes/dashboard.js";
+
 connectDb();
 
 const app = express();
 
-app.use(cors({
-    origin: "http://localhost:3000",
+const corsOptions = {
+    origin:process.env.FRONTEND_URL,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-}));
+    allowedHeaders: [
+        "Content-Type",
+        "Authorization",
+        "ngrok-skip-browser-warning"
+    ]
+};
+
+app.use(cors(corsOptions));
+
 app.use(express.json());
 
 //Routes
@@ -43,6 +51,6 @@ app.get('/', (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+app.listen(5000, () => {
     console.log(` Server is running on port ${PORT}`)
 })
