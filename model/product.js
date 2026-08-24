@@ -18,7 +18,7 @@ const productSchema = new mongoose.Schema({
         type: Number
     },
     sellingPrice: {
-        type: Number
+        type: Number    
     },
     ExpiryDate: {
         type: Date,

@@ -15,6 +15,7 @@ import reportRoutes from "./routes/reportRoute.js";
 import aiRoutes from "./routes/aiRoutes.js";
 import supplierRoutes from "./routes/supplierRoute.js";
 import dashboardRoutes from "./routes/dashboard.js";
+import adminRoutes from "./routes/adminRoutes.js";
 
 connectDb();
 
@@ -44,6 +45,7 @@ app.use('/report', reportRoutes);
 app.use('/ai', aiRoutes);
 app.use('/supplier', supplierRoutes);
 app.use('/dashboard', dashboardRoutes);
+app.use("/api/admin", adminRoutes);
 
 app.get('/', (req, res) => {
     res.send("backed is running")
