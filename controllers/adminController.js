@@ -1,14 +1,9 @@
 import userModel from "../model/users.js";
 import subscriptionModel from "../model/subscription.js";
+import bcrypt from "bcrypt";
 
 
-/*
-|--------------------------------------------------------------------------
-| GET ALL CUSTOMERS
-|--------------------------------------------------------------------------
-*/
-
-
+// GET ALL CUSTOMERS
 export const getAllCustomers = async (req, res) => {
     try {
 
@@ -246,13 +241,7 @@ export const getAllCustomers = async (req, res) => {
     }
 };
 
-/*
-|--------------------------------------------------------------------------
-| GET SINGLE CUSTOMER
-|--------------------------------------------------------------------------
-*/
-
-
+// GET SINGLE CUSTOMER
 export const getCustomerById = async (req, res) => {
     try {
 
@@ -385,14 +374,7 @@ export const getCustomerById = async (req, res) => {
     }
 };
 
-
-
-/*
-|--------------------------------------------------------------------------
-| UPDATE CUSTOMER
-|--------------------------------------------------------------------------
-*/
-
+// UPDATE CUSTOMER
 export const updateCustomer = async (req, res) => {
     try {
 
@@ -503,13 +485,7 @@ export const updateCustomer = async (req, res) => {
     }
 };
 
-
-/*
-|--------------------------------------------------------------------------
-| ACTIVATE / DEACTIVATE CUSTOMER
-|--------------------------------------------------------------------------
-*/
-
+// ACTIVATE / DEACTIVATE CUSTOMER
 export const toggleCustomerStatus = async (req, res) => {
     try {
 
@@ -550,18 +526,58 @@ export const toggleCustomerStatus = async (req, res) => {
     }
 };
 
-
-/*
-|--------------------------------------------------------------------------
-| DELETE CUSTOMER
-|--------------------------------------------------------------------------
-*/
-
+// DELETE CUSTOMER
 export const deleteCustomer = async (req, res) => {
     try {
 
         const { id } = req.params;
+        const { password } = req.body;
 
+        // 1. Password is required
+        if (!password) {
+            return res.status(400).json({
+                message: "Admin password is required"
+            });
+        }
+
+        // 2. Get the currently logged-in admin
+        // req.user.id comes from authMiddleware JWT
+        const admin = await userModel.findById(req.user.id);
+
+        if (!admin) {
+            return res.status(404).json({
+                message: "Admin user not found"
+            });
+        }
+
+        // 3. Make sure logged-in user is actually admin
+        if (admin.role !== "admin") {
+            return res.status(403).json({
+                message: "Only admin can delete customers"
+            });
+        }
+
+        // 4. Verify admin password
+        const isPasswordCorrect = await bcrypt.compare(
+            password,
+            admin.Password
+        );
+
+        if (!isPasswordCorrect) {
+            return res.status(401).json({
+                message: "Incorrect admin password"
+            });
+        }
+
+        // 5. Don't allow admin to delete himself
+        if (id === admin._id.toString()) {
+            return res.status(400).json({
+                message: "You cannot delete your own admin account"
+            });
+        }
+
+        // 6. Find customer
+        // Only role=user can be deleted
         const customer = await userModel.findOne({
             _id: id,
             role: "user"
@@ -573,21 +589,17 @@ export const deleteCustomer = async (req, res) => {
             });
         }
 
-
-        /*
-         * Delete customer's subscriptions also.
-         */
-
+        // 7. Delete customer's subscriptions
         await subscriptionModel.deleteMany({
             userId: id
         });
 
-
+        // 8. Delete customer
         await userModel.deleteOne({
             _id: id
         });
 
-
+        // 9. Success response
         return res.status(200).json({
             message: "Customer and subscription history deleted successfully"
         });
@@ -602,13 +614,7 @@ export const deleteCustomer = async (req, res) => {
     }
 };
 
-
-/*
-|--------------------------------------------------------------------------
-| GET CUSTOMER SUBSCRIPTIONS
-|--------------------------------------------------------------------------
-*/
-
+// GET CUSTOMER SUBSCRIPTIONS
 export const getCustomerSubscriptions = async (req, res) => {
     try {
 
@@ -674,6 +680,7 @@ export const getCustomerSubscriptions = async (req, res) => {
     }
 };
 
+// ADMIN DASHBOARD DATA
 export const getAdminDashboard = async (req, res) => {
     try {
 
@@ -719,7 +726,10 @@ export const getAdminDashboard = async (req, res) => {
                 subscriptionStatus: "pending"
             });
 
-        // Total revenue
+        // -----------------------------------------
+        // Total Revenue
+        // -----------------------------------------
+
         const revenueResult = await subscriptionModel.aggregate([
             {
                 $match: {
@@ -740,6 +750,155 @@ export const getAdminDashboard = async (req, res) => {
             revenueResult[0]?.totalRevenue || 0;
 
 
+        // -----------------------------------------
+        // Monthly Revenue - Last 12 Months
+        // -----------------------------------------
+
+        const monthlyRevenue = await subscriptionModel.aggregate([
+
+            {
+                $match: {
+                    paymentStatus: "paid",
+
+                    createdAt: {
+                        $gte: new Date(
+                            now.getFullYear(),
+                            now.getMonth() - 11,
+                            1
+                        )
+                    }
+                }
+            },
+
+            {
+                $group: {
+                    _id: {
+                        year: {
+                            $year: "$createdAt"
+                        },
+                        month: {
+                            $month: "$createdAt"
+                        }
+                    },
+
+                    revenue: {
+                        $sum: "$price"
+                    },
+
+                    subscriptions: {
+                        $sum: 1
+                    }
+                }
+            },
+
+            {
+                $sort: {
+                    "_id.year": 1,
+                    "_id.month": 1
+                }
+            }
+
+        ]);
+
+
+        // -----------------------------------------
+        // Format Monthly Revenue
+        // -----------------------------------------
+
+        const formattedMonthlyRevenue =
+            monthlyRevenue.map((item) => {
+
+                const monthName = new Date(
+                    item._id.year,
+                    item._id.month - 1
+                ).toLocaleString("en-IN", {
+                    month: "short"
+                });
+
+                return {
+                    year: item._id.year,
+                    month: item._id.month,
+                    monthName,
+                    revenue: item.revenue,
+                    subscriptions: item.subscriptions
+                };
+
+            });
+
+
+        const customerGrowth = await userModel.aggregate([
+            {
+                $match: {
+                    role: "user"
+                }
+            },
+            {
+                $group: {
+                    _id: {
+                        year: { $year: "$createdAt" },
+                        month: { $month: "$createdAt" }
+                    },
+                    customers: {
+                        $sum: 1
+                    }
+                }
+            },
+            {
+                $sort: {
+                    "_id.year": 1,
+                    "_id.month": 1
+                }
+            }
+        ]);
+
+        const customerGrowthData = customerGrowth.map((item) => ({
+            month: `${item._id.year}-${String(item._id.month).padStart(2, "0")}`,
+            customers: item.customers
+        }));
+
+        // Subscriptions expiring within next 7 days
+        const sevenDaysFromNow = new Date();
+        sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+
+        const expiringWithin7Days =
+            await subscriptionModel.countDocuments({
+                paymentStatus: "paid",
+                subscriptionStatus: "active",
+                endDate: {
+                    $gt: now,
+                    $lte: sevenDaysFromNow
+                }
+            });
+
+
+        // Customers with expired subscriptions
+        const expiredCustomers =
+            await subscriptionModel.countDocuments({
+                paymentStatus: "paid",
+                subscriptionStatus: "expired",
+                endDate: {
+                    $lte: now
+                }
+            });
+
+
+        // New subscriptions this month
+        const startOfMonth = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            1
+        );
+
+        const newSubscriptionsThisMonth =
+            await subscriptionModel.countDocuments({
+                paymentStatus: "paid",
+                createdAt: {
+                    $gte: startOfMonth
+                }
+            });
+
+
+
         return res.status(200).json({
 
             message: "Admin dashboard data fetched successfully",
@@ -752,6 +911,15 @@ export const getAdminDashboard = async (req, res) => {
                 expiredSubscriptions,
                 pendingSubscriptions,
                 totalRevenue
+            },
+
+            monthlyRevenue: formattedMonthlyRevenue,
+            customerGrowth: customerGrowthData,
+
+            subscriptionAlerts: {
+                expiringWithin7Days,
+                expiredCustomers,
+                newSubscriptionsThisMonth
             }
 
         });

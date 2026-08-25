@@ -117,17 +117,16 @@ export const loginUser = async (req, res) => {
 
         if (!(email && password)) {
             return res.status(401).json({ message: "Fields are required" })
-            console.log("fields are required")
         }
 
         const user = await userModel.findOne({ email });
 
         if (!user) {
-           return res.status(404).json({ message: "User Not found please enter correct credentials" })
+            return res.status(404).json({ message: "User Not found please enter correct credentials" })
         }
 
-        if(!user.isActive){
-            return res.status(402).json({ message : "Your Account is deactivate. please contact to admin"});
+        if (!user.isActive) {
+            return res.status(402).json({ message: "Your Account is deactivate. please contact to admin" });
         }
 
         const isMatch = await bcrypt.compare(
@@ -145,7 +144,7 @@ export const loginUser = async (req, res) => {
             {
                 id: user._id,
                 email: user.email,
-                role:user.role
+                role: user.role
             },
             process.env.JWT_SECRET_KEY,
             {
@@ -158,7 +157,8 @@ export const loginUser = async (req, res) => {
             token,
             user: {
                 id: user._id,
-                email: user.email
+                email: user.email,
+                role: user.role
             }
         });
 
