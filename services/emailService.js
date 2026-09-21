@@ -11,7 +11,7 @@ export const sendSubscriptionThankYouEmail = async ({
 }) => {
 
     const mailOptions = {
-        from: `"Your Software Name" <${process.env.EMAIL_USER}>`,
+        from: `"StoreFlow" <${process.env.EMAIL_USER}>`,
         to: email,
         subject: "Thank You for Your Subscription 🎉",
 

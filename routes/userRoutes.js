@@ -11,12 +11,16 @@ import {
     getNotificationSettings,
     getPreference,
     updatePreference,
-    getBillingDetails
+    getBillingDetails,
+    listBusinessTypes
 } from '../controllers/userControllers.js';
 
 import users from '../model/users.js';
 
 const router = express.Router();
+
+// Static configuration — the registration screen needs it before sign-in.
+router.get('/business-types', listBusinessTypes);
 
 router.post('/register', registeruser);
 router.get('/profile', authMiddleware, getProfile);

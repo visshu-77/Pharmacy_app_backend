@@ -48,26 +48,28 @@ export const createOrder = async (req, res) => {
             }
 
 
-            if (item.quantity <= 0) {
+            // Quantities can be fractional for loose goods (1.5 kg, 2.5 m).
+            if (!(Number(item.quantity) > 0)) {
                 return res.status(400).json({
                     message: "Invalid quantity"
                 });
             }
 
             if (product.stock < item.quantity) {
-                throw new Error(
-                    `${product.productName} has only ${product.stock} items available`
-                );
+                return res.status(400).json({
+                    message: `${product.productName} has only ${product.stock} ${product.unit || "units"} in stock`
+                });
             }
 
             const price = product.sellingPrice;
-            const total = price * item.quantity;
+            const total = Math.round(price * item.quantity * 100) / 100;
             subtotal += total;
             orderItems.push({
                 productId: product._id,
                 productName: product.productName,
                 price,
                 quantity: item.quantity,
+                unit: product.unit || "piece",
                 total
             });
         }
@@ -92,8 +94,9 @@ export const createOrder = async (req, res) => {
         const order = await orderModel.create([{
             invoiceNumber,
             userId: req.user.id,
-            customerName,
-            customerPhone,
+            // Most counter sales are walk-ins; a name is optional.
+            customerName: (customerName || "").trim() || "Walk-in customer",
+            customerPhone: (customerPhone || "").trim(),
             items: orderItems,
             subtotal,
             discount: discountAmount,
@@ -139,8 +142,17 @@ export const createOrder = async (req, res) => {
             order: order[0]
         });
     } catch (error) {
-        await session.abortTransaction();
+        if (session.inTransaction()) {
+            await session.abortTransaction();
+        }
         console.log("Create order error:", error);
+
+        // Stock ran out between the check and the decrement (another bill).
+        if (error.message === "Product does not have enough stock") {
+            return res.status(409).json({
+                message: "Stock changed while billing. Please review quantities and try again."
+            });
+        }
 
         return res.status(500).json({
             message: "Server error"

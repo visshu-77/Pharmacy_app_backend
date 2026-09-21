@@ -1,8 +1,62 @@
 import userModel from '../model/users.js';
 import bcrypt from "bcrypt";
 import subscriptionModel from "../model/subscription.js";
+import categoryModel from "../model/category.js";
 
 import jwt from "jsonwebtoken";
+
+import {
+    BUSINESS_TYPES,
+    BUSINESS_TYPE_IDS,
+    DEFAULT_BUSINESS_TYPE,
+    getBusinessType
+} from "../config/businessTypes.js";
+
+/**
+ * Public list of shop types, used by the registration screen and by Settings.
+ * No auth needed — it is static configuration.
+ */
+export const listBusinessTypes = (req, res) => {
+    return res.status(200).json({
+        businessTypes: BUSINESS_TYPES.map((type) => ({
+            id: type.id,
+            label: type.label,
+            itemLabel: type.itemLabel,
+            itemLabelPlural: type.itemLabelPlural,
+            tracksExpiry: type.tracksExpiry,
+            tracksBatch: type.tracksBatch,
+            licence: type.licence,
+            units: type.units,
+            defaultUnit: type.defaultUnit,
+            lowStockThreshold: type.lowStockThreshold,
+            defaultTaxRate: type.defaultTaxRate,
+            defaultCategories: type.defaultCategories
+        }))
+    });
+};
+
+/**
+ * Give a brand-new shop a usable category list straight away, so the owner's
+ * first product does not force them to invent a taxonomy.
+ */
+const seedStarterCategories = async (userId, profile) => {
+    try {
+        const existing = await categoryModel.countDocuments({ userId });
+
+        if (existing > 0) return;
+
+        await categoryModel.insertMany(
+            profile.defaultCategories.map((categoryName) => ({
+                categoryName,
+                description: `Starter category for ${profile.label}`,
+                userId
+            }))
+        );
+    } catch (error) {
+        // Seeding is a convenience — never fail registration over it.
+        console.log("Category seeding skipped:", error.message);
+    }
+};
 
 export const registeruser = async (req, res) => {
     try {
@@ -18,23 +72,63 @@ export const registeruser = async (req, res) => {
             city,
             state,
             gstNumber,
-            licenseNumber
+            licenseNumber,
+            businessType
         } = req.body;
 
-        if (!(Shopname && ownerName && mobileNumber && email && Password && confirmPassword && shopAddress && city && state && gstNumber && licenseNumber)) {
-            res.status(401).json({ message: "All fields are required" });
+        const required = {
+            Shopname,
+            ownerName,
+            mobileNumber,
+            email,
+            Password,
+            confirmPassword,
+            shopAddress,
+            city,
+            state
+        };
+
+        const missing = Object.entries(required)
+            .filter(([, value]) => !value)
+            .map(([key]) => key);
+
+        if (missing.length > 0) {
+            return res.status(400).json({
+                message: "Please fill in all the required fields",
+                missing
+            });
+        }
+
+        const resolvedType = BUSINESS_TYPE_IDS.includes(businessType)
+            ? businessType
+            : DEFAULT_BUSINESS_TYPE;
+
+        const profile = getBusinessType(resolvedType);
+
+        // A pharmacy without a drug licence is not a pharmacy.
+        if (profile.licence?.required && !licenseNumber) {
+            return res.status(400).json({
+                message: `${profile.licence.label} is required for a ${profile.label}`
+            });
         }
 
         const existinUser = await userModel.findOne({ email })
 
         if (existinUser) {
             return res.status(409).json({
-                message: "Email is already register"
+                message: "This email is already registered"
             });
         }
+
         if (Password !== confirmPassword) {
             return res.status(400).json({
-                message: "password and confirm password is not matched"
+                message: "Password and confirm password do not match"
+            })
+        }
+
+        if (String(Password).length < 8) {
+            return res.status(400).json({
+                message: "Password should be at least 8 characters long"
             })
         }
 
@@ -43,6 +137,7 @@ export const registeruser = async (req, res) => {
 
         const user = await userModel.create({
             Shopname,
+            businessType: resolvedType,
             ownerName,
             mobileNumber,
             email,
@@ -50,9 +145,15 @@ export const registeruser = async (req, res) => {
             shopAddress,
             city,
             state,
-            gstNumber,
-            licenseNumber
+            gstNumber: gstNumber || "",
+            licenseNumber: licenseNumber || "",
+            preferences: {
+                lowStockThreshold: profile.lowStockThreshold,
+                defaultTaxRate: profile.defaultTaxRate
+            }
         });
+
+        await seedStarterCategories(user._id, profile);
 
         const token = jwt.sign(
             {
@@ -66,17 +167,23 @@ export const registeruser = async (req, res) => {
             }
         )
 
-        res.status(201).json({
-            msg: "user Created Successfully",
+        return res.status(201).json({
+            message: "Account created successfully",
             token,
             user: {
                 id: user._id,
-                email: user.email
+                email: user.email,
+                Shopname: user.Shopname,
+                businessType: user.businessType
             }
         });
 
     } catch (err) {
-        console.log(err);
+        console.log("Register error:", err);
+
+        return res.status(500).json({
+            message: "Server error"
+        });
     }
 };
 
@@ -158,7 +265,9 @@ export const loginUser = async (req, res) => {
             user: {
                 id: user._id,
                 email: user.email,
-                role: user.role
+                role: user.role,
+                Shopname: user.Shopname,
+                businessType: user.businessType
             }
         });
 
@@ -181,7 +290,9 @@ export const updateProfile = async (req, res) => {
             city,
             state,
             gstNumber,
-            licenseNumber
+            licenseNumber,
+            businessType,
+            upiId
         } = req.body;
 
         const user = await userModel.findById(userId);
@@ -223,6 +334,23 @@ export const updateProfile = async (req, res) => {
             }
         }
 
+        // Switching business type only relabels the UI and changes which
+        // fields are shown — existing products and orders are untouched.
+        if (businessType && BUSINESS_TYPE_IDS.includes(businessType)) {
+            const profile = getBusinessType(businessType);
+
+            if (
+                profile.licence?.required &&
+                !(licenseNumber ?? user.licenseNumber)
+            ) {
+                return res.status(400).json({
+                    message: `${profile.licence.label} is required for a ${profile.label}`
+                });
+            }
+
+            user.businessType = businessType;
+        }
+
         user.Shopname = Shopname ?? user.Shopname;
         user.ownerName = ownerName ?? user.ownerName;
         user.mobileNumber = mobileNumber ?? user.mobileNumber;
@@ -232,6 +360,7 @@ export const updateProfile = async (req, res) => {
         user.state = state ?? user.state;
         user.gstNumber = gstNumber ?? user.gstNumber;
         user.licenseNumber = licenseNumber ?? user.licenseNumber;
+        user.upiId = upiId ?? user.upiId;
 
         await user.save();
 
@@ -240,6 +369,7 @@ export const updateProfile = async (req, res) => {
             user: {
                 id: user._id,
                 Shopname: user.Shopname,
+                businessType: user.businessType,
                 ownerName: user.ownerName,
                 mobileNumber: user.mobileNumber,
                 email: user.email,
@@ -247,7 +377,8 @@ export const updateProfile = async (req, res) => {
                 city: user.city,
                 state: user.state,
                 gstNumber: user.gstNumber,
-                licenseNumber: user.licenseNumber
+                licenseNumber: user.licenseNumber,
+                upiId: user.upiId
             }
         });
 
@@ -419,29 +550,34 @@ export const getPreference = async (req, res) => {
 
 export const updatePreference = async (req, res) => {
     try {
-        const {
-            language,
-            currency,
-            timezone,
-            dateFormat,
-            defaultPage,
-            theme
-        } = req.body;
-
         const user = await userModel.findById(req.user.id);
+
         if (!user) {
-            return res.status(400).json({
-                message: "user not found"
+            return res.status(404).json({
+                message: "User not found"
             })
         }
 
-        user.preferences = {
-            language,
-            currency,
-            timezone,
-            dateFormat,
-            defaultPage,
-            theme
+        const allowed = [
+            "language",
+            "currency",
+            "timezone",
+            "dateFormat",
+            "defaultPage",
+            "theme",
+            "lowStockThreshold",
+            "defaultTaxRate"
+        ];
+
+        // Merge rather than replace: the settings screen posts one section at
+        // a time, and a partial payload used to wipe every other preference.
+        for (const key of allowed) {
+            if (req.body[key] === undefined) continue;
+
+            user.preferences[key] =
+                key === "lowStockThreshold" || key === "defaultTaxRate"
+                    ? Number(req.body[key]) || 0
+                    : req.body[key];
         }
 
         await user.save();

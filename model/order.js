@@ -47,6 +47,13 @@ const orderSchema = new mongoose.Schema(
                     required: true
                 },
 
+                // Snapshot of how it was sold (kg, strip, metre…) so old
+                // invoices still read correctly if the product changes.
+                unit: {
+                    type: String,
+                    default: "piece"
+                },
+
                 total: {
                     type: Number,
                     required: true

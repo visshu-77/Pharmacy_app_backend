@@ -1,10 +1,20 @@
 import mongoose from "mongoose";
 
+import {
+    BUSINESS_TYPE_IDS,
+    DEFAULT_BUSINESS_TYPE
+} from "../config/businessTypes.js";
+
 const userSchema = new mongoose.Schema(
     {
         Shopname: {
             type: String,
             required: true,
+        },
+        businessType: {
+            type: String,
+            enum: BUSINESS_TYPE_IDS,
+            default: DEFAULT_BUSINESS_TYPE
         },
         ownerName: {
             type: String,
@@ -45,13 +55,22 @@ const userSchema = new mongoose.Schema(
             type: String,
             required: true
         },
+        // Optional: plenty of small shops are below the GST threshold.
         gstNumber: {
             type: String,
-            required: true
+            default: ""
         },
+        // Trade / drug / FSSAI licence. Only some business types need one —
+        // see `licence` on the profile in config/businessTypes.js.
         licenseNumber: {
             type: String,
-            required: true
+            default: ""
+        },
+        // Shown as a payable QR on the billing screen.
+        upiId: {
+            type: String,
+            default: "",
+            trim: true
         },
         googleId: {
             type: String,
@@ -129,8 +148,25 @@ const userSchema = new mongoose.Schema(
             theme: {
                 type: String,
                 default: "light"
+            },
+
+            // Stock at or below this count is flagged "Low Stock" across the
+            // app. Seeded from the business type profile at registration
+            // because a kirana store and an electronics showroom do not mean
+            // the same thing by "running low".
+            lowStockThreshold: {
+                type: Number,
+                default: 10
+            },
+
+            defaultTaxRate: {
+                type: Number,
+                default: 0
             }
         },
+    },
+    {
+        timestamps: true
     }
 )
 

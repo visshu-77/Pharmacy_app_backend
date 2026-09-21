@@ -1,6 +1,7 @@
 import userModel from "../model/users.js";
 import subscriptionModel from "../model/subscription.js";
 import bcrypt from "bcrypt";
+import { getBusinessType, BUSINESS_TYPE_IDS } from "../config/businessTypes.js";
 
 
 // GET ALL CUSTOMERS
@@ -12,7 +13,8 @@ export const getAllCustomers = async (req, res) => {
             limit = 10,
             search = "",
             status = "all",
-            plan = "all"
+            plan = "all",
+            businessType = "all"
         } = req.query;
 
         const pageNumber = Math.max(
@@ -37,6 +39,10 @@ export const getAllCustomers = async (req, res) => {
         const searchQuery = {
             role: "user"
         };
+
+        if (businessType && businessType !== "all") {
+            searchQuery.businessType = businessType;
+        }
 
         if (search.trim()) {
 
@@ -389,7 +395,8 @@ export const updateCustomer = async (req, res) => {
             city,
             state,
             gstNumber,
-            licenseNumber
+            licenseNumber,
+            businessType
         } = req.body;
 
 
@@ -454,6 +461,10 @@ export const updateCustomer = async (req, res) => {
         customer.licenseNumber =
             licenseNumber ?? customer.licenseNumber;
 
+        if (businessType && BUSINESS_TYPE_IDS.includes(businessType)) {
+            customer.businessType = businessType;
+        }
+
 
         await customer.save();
 
@@ -471,6 +482,7 @@ export const updateCustomer = async (req, res) => {
                 state: customer.state,
                 gstNumber: customer.gstNumber,
                 licenseNumber: customer.licenseNumber,
+                businessType: customer.businessType,
                 isActive: customer.isActive
             }
         });
@@ -899,9 +911,29 @@ export const getAdminDashboard = async (req, res) => {
 
 
 
+        // Which kinds of shops use the platform — grocery, hardware, pharmacy…
+        const businessTypeCounts = await userModel.aggregate([
+            { $match: { role: "user" } },
+            {
+                $group: {
+                    _id: { $ifNull: ["$businessType", "general"] },
+                    count: { $sum: 1 }
+                }
+            },
+            { $sort: { count: -1 } }
+        ]);
+
+        const businessTypes = businessTypeCounts.map((item) => ({
+            id: item._id,
+            label: getBusinessType(item._id).label,
+            count: item.count
+        }));
+
         return res.status(200).json({
 
             message: "Admin dashboard data fetched successfully",
+
+            businessTypes,
 
             stats: {
                 totalCustomers,

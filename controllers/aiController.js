@@ -10,6 +10,9 @@ import {
 
 import { detectQueryType } from "../services/aiQueryRouter.js";
 import productModel from "../model/product.js";
+import userModel from "../model/users.js";
+
+import { getBusinessType } from "../config/businessTypes.js";
 
 export const askCustomerQuery = async (req, res) => {
 
@@ -100,8 +103,21 @@ export const askCustomerQuery = async (req, res) => {
             );
         }
 
+        const owner = await userModel
+            .findById(req.user.id)
+            .select("Shopname businessType city state");
+
+        const profile = getBusinessType(owner?.businessType);
+
         const prompt = `
-            You are an AI assistant for a shop management dashboard.
+            You are the StoreFlow assistant, helping a shop owner understand
+            their own business data.
+
+            SHOP PROFILE:
+            - Shop name: ${owner?.Shopname || "this shop"}
+            - Type of business: ${profile.label}
+            - Location: ${[owner?.city, owner?.state].filter(Boolean).join(", ") || "not set"}
+            - Refer to stock items as "${profile.itemLabelPlural.toLowerCase()}".
 
             Use ONLY the following shop data to answer the user's question.
 
@@ -112,6 +128,8 @@ export const askCustomerQuery = async (req, res) => {
             ${question}
 
             Rules:
+            - Speak to the owner in plain language, as a shopkeeper would.
+            - Amounts are in Indian Rupees (₹).
             - Do not invent information.
             - Do not invent numbers.
             - Do not invent product names.

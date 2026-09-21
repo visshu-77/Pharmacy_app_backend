@@ -4,12 +4,25 @@ import orderModel from "../model/order.js";
 import productModel from "../model/product.js";
 import supplierModel from "../model/Supplier.js";
 import categoryModel from "../model/category.js";
+import userModel from "../model/users.js";
+
+import { getBusinessType } from "../config/businessTypes.js";
 
 export const getDashboardSummary = async (req, res) => {
 
     try {
 
         const userId = new mongoose.Types.ObjectId(req.user.id);
+
+        const user = await userModel
+            .findById(userId)
+            .select("businessType preferences Shopname ownerName");
+
+        const profile = getBusinessType(user?.businessType);
+
+        const lowStockThreshold =
+            user?.preferences?.lowStockThreshold ?? profile.lowStockThreshold;
+
         const totalProducts = await productModel.countDocuments({
             userId
         });
@@ -61,8 +74,13 @@ export const getDashboardSummary = async (req, res) => {
             userId,
             stock: {
                 $gt: 0,
-                $lt: 50
+                $lte: lowStockThreshold
             }
+        });
+
+        const outOfStock = await productModel.countDocuments({
+            userId,
+            stock: { $lte: 0 }
         });
         // ==========================================
         // MONTHLY REVENUE
@@ -138,30 +156,58 @@ export const getDashboardSummary = async (req, res) => {
         // Expiring Soon
         // -------------------------
 
-        const fiveDaysLater = new Date(startOfDay);
+        // Only shops that actually track expiry (pharmacy, grocery, bakery,
+        // cosmetics) get these counts; for the rest they stay at zero and the
+        // UI hides the tiles entirely.
+        let expiringSoon = 0;
+        let expired = 0;
 
-        fiveDaysLater.setDate(
-            fiveDaysLater.getDate() + 5
-        );
+        if (profile.tracksExpiry) {
 
-        const thirtyDaysLater = new Date(startOfDay);
+            const thirtyDaysLater = new Date(startOfDay);
 
-        thirtyDaysLater.setDate(
-            thirtyDaysLater.getDate() + 30
-        );
+            thirtyDaysLater.setDate(
+                thirtyDaysLater.getDate() + 30
+            );
 
-        const expiringSoon = await productModel.countDocuments({
-            userId,
+            expiringSoon = await productModel.countDocuments({
+                userId,
+                ExpiryDate: {
+                    $gte: startOfDay,
+                    $lte: thirtyDaysLater
+                }
+            });
 
-            ExpiryDate: {
-                $gte: startOfDay,
-                $lte: thirtyDaysLater
-            }
-        });
+            expired = await productModel.countDocuments({
+                userId,
+                ExpiryDate: {
+                    $ne: null,
+                    $lt: startOfDay
+                }
+            });
+        }
 
         const totalSuppliers = await supplierModel.countDocuments({
             userId
         });
+
+        // Stock valuation at cost — what the shelves are worth right now.
+        const [valuation] = await productModel.aggregate([
+            { $match: { userId } },
+            {
+                $group: {
+                    _id: null,
+                    stockValue: {
+                        $sum: {
+                            $multiply: [
+                                { $ifNull: ["$stock", 0] },
+                                { $ifNull: ["$purchase", 0] }
+                            ]
+                        }
+                    }
+                }
+            }
+        ]);
 
         return res.status(200).json({
 
@@ -171,12 +217,24 @@ export const getDashboardSummary = async (req, res) => {
                 todaysRevenue,
                 ordersToday,
                 lowStock,
+                outOfStock,
                 expiringSoon,
+                expired,
                 totalProducts,
                 totalSuppliers,
                 monthlyRevenue,
                 yearlyRevenue,
-                totalCategories
+                totalCategories,
+                stockValue: valuation?.stockValue || 0
+            },
+
+            business: {
+                type: profile.id,
+                label: profile.label,
+                shopName: user?.Shopname || "",
+                ownerName: user?.ownerName || "",
+                tracksExpiry: profile.tracksExpiry,
+                lowStockThreshold
             }
 
         });

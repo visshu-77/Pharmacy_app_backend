@@ -10,6 +10,41 @@ const getDateRange = (range) => {
     let endDate = new Date(now);
 
     switch (range) {
+        case "today":
+            startDate = new Date(
+                now.getFullYear(),
+                now.getMonth(),
+                now.getDate()
+            );
+            break;
+
+        case "thisWeek": {
+            // Week starts Monday.
+            const day = (now.getDay() + 6) % 7;
+            startDate = new Date(
+                now.getFullYear(),
+                now.getMonth(),
+                now.getDate() - day
+            );
+            break;
+        }
+
+        case "last14Days":
+            startDate = new Date(
+                now.getFullYear(),
+                now.getMonth(),
+                now.getDate() - 13
+            );
+            break;
+
+        case "last30Days":
+            startDate = new Date(
+                now.getFullYear(),
+                now.getMonth(),
+                now.getDate() - 29
+            );
+            break;
+
         case "thisMonth":
             startDate = new Date(
                 now.getFullYear(),
@@ -146,12 +181,22 @@ export const getSalesOverview = async (req, res) => {
 
         const userId = new mongoose.Types.ObjectId(req.user.id);
 
+        const range = req.query.range || "thisMonth";
+        const { startDate, endDate } = getDateRange(range);
+
+        const match = {
+            userId: userId,
+            paymentStatus: "Paid"
+        };
+
+        if (startDate) {
+            match.createdAt = { $gte: startDate };
+            if (endDate) match.createdAt.$lt = endDate;
+        }
+
         const sales = await orderModel.aggregate([
             {
-                $match: {
-                    userId: userId,
-                    paymentStatus: "Paid"
-                }
+                $match: match
             },
             {
                 $group: {
@@ -179,10 +224,10 @@ export const getSalesOverview = async (req, res) => {
             }
         ]);
 
-        console.log("User ID:", userId);
-        console.log("Sales:", sales);
-
         return res.status(200).json({
+            range,
+            startDate,
+            endDate,
             sales
         });
 
