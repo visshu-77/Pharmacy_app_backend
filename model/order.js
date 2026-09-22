@@ -91,6 +91,22 @@ const orderSchema = new mongoose.Schema(
             type: String,
             enum: ["Pending", "Paid"],
             default: "Paid"
+        },
+
+        // "billing": a full bill from the Billing screen.
+        // "note":    a quick line jotted on the Sales Note page. Still a real
+        //            sale — stock moves and reports count it — just without
+        //            customer details or a printed invoice.
+        source: {
+            type: String,
+            enum: ["billing", "note"],
+            default: "billing"
+        },
+
+        remark: {
+            type: String,
+            default: "",
+            trim: true
         }
     },
     {

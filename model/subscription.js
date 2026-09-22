@@ -10,7 +10,9 @@ const subscriptionSchema = new mongoose.Schema(
 
         plan: {
             type: String,
-            enum: ["normal", "premium", "business"],
+            // "pro" is the only plan on sale; the rest are kept so older
+            // subscriptions still load.
+            enum: ["pro", "normal", "premium", "business"],
             required: true
         },
 

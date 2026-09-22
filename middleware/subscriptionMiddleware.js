@@ -1,40 +1,22 @@
-import subscriptionModel from "../model/subscription.js";
+import { resolveSubscription } from "../services/subscriptionService.js";
 
+/**
+ * Blocks the request unless the user has a plan in force right now.
+ * Uses the same resolver as /subscription/my-subscription, so an expiring
+ * plan with a paid renewal queued behind it rolls over without a gap.
+ */
 export const checkSubscription = async (req, res, next) => {
     try {
+        const { current } = await resolveSubscription(req.user.id);
 
-        // console.log("USER ID FROM TOKEN:", req.user.id);
-
-        const subscription = await subscriptionModel.findOne({
-            userId: req.user.id,
-            paymentStatus: "paid",
-            subscriptionStatus: "active"
-        }).sort({ createdAt: -1 });
-
-        // console.log("SUBSCRIPTION FOUND:", subscription);
-
-        if (!subscription) {
+        if (!current) {
             return res.status(403).json({
-                message: "Active Subscription is required",
+                message: "Your subscription has expired. Renew to continue.",
                 subscriptionRequired: true
             });
         }
 
-        if (
-            subscription.endDate &&
-            new Date(subscription.endDate) <= new Date()
-        ) {
-
-            subscription.subscriptionStatus = "expired";
-            await subscription.save();
-
-            return res.status(403).json({
-                message: "Your subscription has expired",
-                subscriptionRequired: true
-            });
-        }
-
-        req.subscription = subscription;
+        req.subscription = current;
 
         next();
 

@@ -4,57 +4,31 @@ import crypto from "crypto";
 import { subscriptionPlans } from "../config/subscriptionPlans.js";
 
 import { sendSubscriptionThankYouEmail } from "../services/emailService.js";
+import { calculateEndDate, resolveSubscription } from "../services/subscriptionService.js";
 
 import userModel from "../model/users.js";
 import transporter from "../config/mail.js";
 
 
-const calculateEndDate = (startDate, duration) => {
-    const endDate = new Date(startDate);
-
-    if (duration === "monthly") {
-        endDate.setMonth(endDate.getMonth() + 1);
-    } else if (duration === "sixMonths") {
-        endDate.setMonth(endDate.getMonth() + 6);
-    } else if (duration === "yearly") {
-        endDate.setFullYear(endDate.getFullYear() + 1);
-    }
-
-    return endDate;
-};
-
 export const createSubscription = async (req, res) => {
     try {
         const {
-            plan,
+            plan = "pro",
             duration,
-            price,
             paymentMethod
         } = req.body;
 
+        // Never trust a client-sent price.
+        const price = subscriptionPlans?.[plan]?.[duration];
 
-        if (!plan || !duration || !price) {
+        if (!price) {
             return res.status(400).json({
-                message: "Plan, duration and price are required"
+                message: "Invalid plan or duration"
             });
         }
 
         const startDate = new Date();
-        const endDate = new Date(startDate);
-
-        if (duration == "monthly") {
-            endDate.setMonth(
-                endDate.getMonth() + 1
-            );
-        } else if (duration == 'sixMonths') {
-            endDate.setMonth(
-                endDate.getMonth() + 6
-            );
-        } else if (duration == "yearly") {
-            endDate.setFullYear(
-                endDate.getFullYear() + 1
-            );
-        }
+        const endDate = calculateEndDate(startDate, duration);
 
         const subscription = await subscriptionModel.create({
             userId: req.user.id,
@@ -186,29 +160,26 @@ export const verifyPayment = async (req, res) => {
             });
         }
 
-        const existingSubscription =
-            await subscriptionModel.findOne({
-                userId: req.user.id,
-                paymentStatus: "paid",
-                subscriptionStatus: {
-                    $in: ["active", "pending"]
-                },
-                endDate: {
-                    $gt: new Date()
-                }
-            }).sort({
-                endDate: -1
+        // Razorpay can call back twice (retries, double taps). One payment,
+        // one subscription.
+        const alreadyRecorded = await subscriptionModel.findOne({
+            razorpayPaymentId: razorpay_payment_id
+        });
+
+        if (alreadyRecorded) {
+            return res.status(200).json({
+                message: "Payment already verified",
+                subscription: alreadyRecorded
             });
+        }
 
+        // Renewing early? Queue the new period after everything already
+        // paid for, so no days are lost.
+        const { accessEndsAt } = await resolveSubscription(req.user.id);
 
-        const startDate = existingSubscription
-            ? new Date(existingSubscription.endDate)
-            : new Date();
+        const startDate = accessEndsAt ? new Date(accessEndsAt) : new Date();
 
-        const subscriptionStatus =
-            existingSubscription
-                ? "pending"
-                : "active";
+        const subscriptionStatus = accessEndsAt ? "pending" : "active";
 
         const endDate = calculateEndDate(startDate, duration);
 
@@ -238,10 +209,9 @@ export const verifyPayment = async (req, res) => {
                 endDate
             })
         } catch (emailErr) {
-            console.log(emailErr);
-            return res.status(500).json({
-                message: "Email Error"
-            })
+            // The payment and subscription are already saved — a failed
+            // thank-you email must not tell the customer their payment failed.
+            console.log("Subscription email failed:", emailErr.message);
         }
 
         // Payment is genuine
@@ -261,72 +231,30 @@ export const verifyPayment = async (req, res) => {
 
 export const getMySubscription = async (req, res) => {
     try {
-        const userId = req.user.id;
-        const now = new Date();
+        const { current, upcoming, accessEndsAt } =
+            await resolveSubscription(req.user.id);
 
-        // 1. Mark all expired active subscriptions as expired
-        await subscriptionModel.updateMany(
-            {
-                userId,
-                paymentStatus: "paid",
-                subscriptionStatus: "active",
-                endDate: { $lte: now }
-            },
-            {
-                $set: {
-                    subscriptionStatus: "expired"
-                }
-            }
-        );
+        // When nothing is active, tell the app about the plan that ended most
+        // recently so it can say "ended 5 days ago — your data is safe".
+        // Expiry never deletes data; it only pauses access until renewal.
+        const lastEnded = current
+            ? null
+            : await subscriptionModel
+                .findOne({
+                    userId: req.user.id,
+                    paymentStatus: "paid",
+                    endDate: { $lte: new Date() }
+                })
+                .sort({ endDate: -1 })
+                .select("plan duration endDate");
 
-        // 2. Find currently active subscription
-        let activeSubscription =
-            await subscriptionModel.findOne({
-                userId,
-                paymentStatus: "paid",
-                subscriptionStatus: "active",
-                startDate: { $lte: now },
-                endDate: { $gt: now }
-            }).sort({
-                endDate: -1
-            });
-
-        // 3. If active subscription exists
-        if (activeSubscription) {
-            return res.status(200).json({
-                hasSubscription: true,
-                subscription: activeSubscription
-            });
-        }
-
-        // 4. Find next pending subscription
-        const pendingSubscription =
-            await subscriptionModel.findOne({
-                userId,
-                paymentStatus: "paid",
-                subscriptionStatus: "pending",
-                startDate: { $lte: now }
-            }).sort({
-                startDate: 1
-            });
-
-        // 5. Activate pending subscription
-        if (pendingSubscription) {
-
-            pendingSubscription.subscriptionStatus = "active";
-
-            await pendingSubscription.save();
-
-            return res.status(200).json({
-                hasSubscription: true,
-                subscription: pendingSubscription
-            });
-        }
-
-        // 6. No subscription
         return res.status(200).json({
-            hasSubscription: false,
-            subscription: null
+            hasSubscription: Boolean(current),
+            subscription: current,
+            upcoming,
+            accessEndsAt,
+            lastEnded,
+            serverTime: new Date()
         });
 
     } catch (error) {
