@@ -25,34 +25,59 @@ const app = express();
 /**
  * Allowed browser origins.
  *
- * FRONTEND_URL may hold one URL or several separated by commas, e.g.
+ * FRONTEND_URL holds one URL or several separated by commas:
  *   FRONTEND_URL=https://pharmacy-app-wheat-nine.vercel.app,http://localhost:3000
+ *
+ * A "*" wildcard is allowed in the host, which covers Vercel preview
+ * deployments that get a new URL every push:
+ *   FRONTEND_URL=https://*.vercel.app
  *
  * Trailing slashes and letter case are ignored, so
  * "https://my-app.vercel.app/" still matches "https://my-app.vercel.app".
+ *
+ * If FRONTEND_URL is not set at all, every origin is allowed and a warning is
+ * logged — a fresh deployment works, but it should be set in production.
  */
 const normalizeOrigin = (url = "") => url.trim().replace(/\/+$/, "").toLowerCase();
 
-const allowedOrigins = new Set(
-    [
-        ...(process.env.FRONTEND_URL || "").split(","),
-        "http://localhost:3000"
-    ]
-        .map(normalizeOrigin)
-        .filter(Boolean)
-);
+const configuredOrigins = (process.env.FRONTEND_URL || "")
+    .split(",")
+    .map(normalizeOrigin)
+    .filter(Boolean);
+
+// Localhost is always allowed so local development keeps working.
+const allowedOrigins = [
+    ...new Set([...configuredOrigins, "http://localhost:3000"])
+];
+
+const allowEveryOrigin = configuredOrigins.length === 0;
+
+/** Does this origin match an allowed entry (wildcards included)? */
+const isAllowedOrigin = (origin) => {
+    const candidate = normalizeOrigin(origin);
+
+    return allowedOrigins.some((allowed) => {
+        if (!allowed.includes("*")) return allowed === candidate;
+
+        const pattern = new RegExp(
+            `^${allowed.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join("[^/]*")}$`
+        );
+
+        return pattern.test(candidate);
+    });
+};
 
 const corsOptions = {
     origin(origin, callback) {
         // Same-origin requests, curl, health checks and mobile apps send no Origin.
-        if (!origin || allowedOrigins.has(normalizeOrigin(origin))) {
+        if (!origin || allowEveryOrigin || isAllowedOrigin(origin)) {
             return callback(null, true);
         }
 
         // Shows up in the Render logs, so a mismatch is obvious.
         console.warn(
-            `CORS blocked origin "${origin}". Allowed: ${[...allowedOrigins].join(", ")}. ` +
-            "Add it to FRONTEND_URL."
+            `CORS blocked origin "${origin}". Allowed: ${allowedOrigins.join(", ")}. ` +
+            "Add it to the FRONTEND_URL environment variable."
         );
 
         return callback(null, false);
@@ -68,7 +93,31 @@ const corsOptions = {
 // Also answers preflight (OPTIONS) requests before they reach any route.
 app.use(cors(corsOptions));
 
-console.log("CORS allowed origins:", [...allowedOrigins].join(", "));
+if (allowEveryOrigin) {
+    console.warn(
+        "FRONTEND_URL is not set — allowing every origin. Set it to your site's URL in production."
+    );
+} else {
+    console.log("CORS allowed origins:", allowedOrigins.join(", "));
+}
+
+/**
+ * Open this in a browser (or curl it) to see exactly what the deployed server
+ * allows. Handy when the browser reports a CORS error.
+ */
+app.get("/cors-check", (req, res) => {
+    const origin = req.headers.origin || null;
+
+    res.json({
+        yourOrigin: origin,
+        allowed: Boolean(!origin || allowEveryOrigin || isAllowedOrigin(origin)),
+        allowEveryOrigin,
+        allowedOrigins,
+        frontendUrlSet: Boolean(process.env.FRONTEND_URL),
+        serverTime: new Date()
+    });
+});
+
 
 app.use(express.json());
 
