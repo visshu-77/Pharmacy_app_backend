@@ -35,17 +35,149 @@ export const listBusinessTypes = (req, res) => {
     });
 };
 
-/**
- * Direct signup is closed: accounts are now created only after the email code
- * is verified (see controllers/signupOtpController.js). Kept as an explicit
- * error so an old cached frontend gets a clear message instead of silently
- * creating an unverified account.
- */
 export const registeruser = async (req, res) => {
-    return res.status(410).json({
-        message: "Please refresh the page — signup now verifies your email with a code.",
-        useEndpoints: ["/api/register/send-otp", "/api/register/verify-otp"]
-    });
+    try {
+
+        const {
+            Shopname,
+            ownerName,
+            mobileNumber,
+            email,
+            Password,
+            confirmPassword,
+            shopAddress,
+            city,
+            state,
+            gstNumber,
+            licenseNumber,
+            businessType
+        } = req.body;
+
+        const required = {
+            Shopname,
+            ownerName,
+            mobileNumber,
+            email,
+            Password,
+            confirmPassword,
+            shopAddress,
+            city,
+            state
+        };
+
+        const missing = Object.entries(required)
+            .filter(([, value]) => !value)
+            .map(([key]) => key);
+
+        if (missing.length > 0) {
+            return res.status(400).json({
+                message: "Please fill in all the required fields",
+                missing
+            });
+        }
+
+        const resolvedType = BUSINESS_TYPE_IDS.includes(businessType)
+            ? businessType
+            : DEFAULT_BUSINESS_TYPE;
+
+        const profile = getBusinessType(resolvedType);
+
+        // A pharmacy without a drug licence is not a pharmacy.
+        if (profile.licence?.required && !licenseNumber) {
+            return res.status(400).json({
+                message: `${profile.licence.label} is required for a ${profile.label}`
+            });
+        }
+
+        if (!/^[6-9]\d{9}$/.test(String(mobileNumber))) {
+            return res.status(400).json({
+                message: "Please enter a valid 10-digit mobile number"
+            });
+        }
+
+        const normalizedEmail = String(email).trim().toLowerCase();
+
+        const existinUser = await userModel.findOne({ email: normalizedEmail });
+
+        if (existinUser) {
+            return res.status(409).json({
+                message: "This email is already registered"
+            });
+        }
+
+        const existingMobile = await userModel.findOne({ mobileNumber: Number(mobileNumber) });
+
+        if (existingMobile) {
+            return res.status(409).json({
+                message: "This mobile number is already registered"
+            });
+        }
+
+        if (Password !== confirmPassword) {
+            return res.status(400).json({
+                message: "Password and confirm password do not match"
+            })
+        }
+
+        if (String(Password).length < 8) {
+            return res.status(400).json({
+                message: "Password should be at least 8 characters long"
+            })
+        }
+
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(Password, salt);
+
+        const user = await userModel.create({
+            Shopname,
+            businessType: resolvedType,
+            ownerName,
+            mobileNumber,
+            email: normalizedEmail,
+            Password: hashedPassword,
+            shopAddress,
+            city,
+            state,
+            gstNumber: gstNumber || "",
+            licenseNumber: licenseNumber || "",
+            preferences: {
+                lowStockThreshold: profile.lowStockThreshold,
+                defaultTaxRate: profile.defaultTaxRate
+            }
+        });
+
+        await seedStarterCategories(user._id, profile);
+
+        const token = jwt.sign(
+            {
+                id: user._id,
+                email: user.email,
+                role: user.role
+            },
+            process.env.JWT_SECRET_KEY,
+            {
+                expiresIn: "1d"
+            }
+        )
+
+        return res.status(201).json({
+            message: "Account created successfully",
+            token,
+            user: {
+                id: user._id,
+                email: user.email,
+                Shopname: user.Shopname,
+                businessType: user.businessType
+            }
+        });
+
+    } catch (err) {
+        console.log("Register error:", err);
+
+        return res.status(500).json({
+            message: "Server error"
+        });
+    }
 };
 
 export const getProfile = async (req, res) => {

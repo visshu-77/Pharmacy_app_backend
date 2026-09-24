@@ -18,6 +18,7 @@ import supplierRoutes from "./routes/supplierRoute.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import noteRoutes from "./routes/noteRoute.js";
+import { describeMail } from "./services/mailer.js";
 
 connectDb();
 
@@ -119,6 +120,17 @@ app.get("/cors-check", (req, res) => {
     });
 });
 
+
+// Printed at boot so the deploy log shows how email will be sent.
+const mailSetup = describeMail();
+console.log(
+    mailSetup.provider === "none"
+        ? "Mail: NOT CONFIGURED — signup codes cannot be sent. Set EMAIL_USER + EMAIL_PASSWORD, or RESEND_API_KEY with a verified MAIL_FROM."
+        : `Mail: sending via ${mailSetup.provider} as ${mailSetup.from}` +
+          (mailSetup.provider === "resend" && mailSetup.resendUsingSharedSender
+              ? " — WARNING: resend.dev only delivers to your own Resend account address"
+              : "")
+);
 
 app.use(express.json());
 

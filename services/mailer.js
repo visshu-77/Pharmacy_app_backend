@@ -89,9 +89,22 @@ export const sendAppEmail = async ({ to, subject, html, text }) => {
         return { provider };
 
     } catch (cause) {
-        const error = new Error(`Gmail SMTP: ${cause.message}`);
+        // A timeout here almost always means the host blocks outbound SMTP
+        // (Render, Heroku and most PaaS do). Say so, instead of leaving a
+        // bare "ETIMEDOUT" to puzzle over.
+        const blocked = ["ETIMEDOUT", "ESOCKET", "ECONNECTION", "ECONNREFUSED"].includes(cause.code) ||
+            /timeout|timed out/i.test(cause.message || "");
+
+        const error = new Error(
+            blocked
+                ? `Gmail SMTP could not be reached (${cause.code || "timeout"}). This host blocks outbound SMTP — use an HTTP email API instead (e.g. Resend with a verified domain).`
+                : `Gmail SMTP: ${cause.message}`
+        );
+
         error.isEmailError = true;
         error.status = cause.responseCode || 500;
+        error.smtpBlocked = blocked;
+
         throw error;
     }
 };

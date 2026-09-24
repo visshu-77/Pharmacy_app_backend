@@ -15,12 +15,7 @@ import {
     listBusinessTypes
 } from '../controllers/userControllers.js';
 
-import {
-    sendSignupOtp,
-    resendSignupOtp,
-    verifySignupOtp,
-    emailStatus
-} from '../controllers/signupOtpController.js';
+import { emailStatus } from '../controllers/emailStatusController.js';
 
 import users from '../model/users.js';
 
@@ -29,14 +24,9 @@ const router = express.Router();
 // Static configuration — the registration screen needs it before sign-in.
 router.get('/business-types', listBusinessTypes);
 
-// Signup with email verification: send a code, then verify it to create
-// the account. /register itself is closed (see the controller).
-// Setup check (development only): GET /api/email-status[?to=you@example.com]
+// Email setup check. Open in development; in production it needs
+// ?key=<DIAGNOSTICS_KEY>. Used for subscription receipt emails.
 router.get('/email-status', emailStatus);
-
-router.post('/register/send-otp', sendSignupOtp);
-router.post('/register/resend-otp', resendSignupOtp);
-router.post('/register/verify-otp', verifySignupOtp);
 
 router.post('/register', registeruser);
 router.get('/profile', authMiddleware, getProfile);

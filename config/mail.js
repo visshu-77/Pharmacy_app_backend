@@ -16,7 +16,12 @@ export const getTransporter = () => {
             auth: {
                 user: process.env.EMAIL_USER,
                 pass: process.env.EMAIL_PASSWORD
-            }
+            },
+            // Many hosts (Render, Heroku and similar) block outbound SMTP.
+            // Without these the connection hangs for ~2 minutes before failing.
+            connectionTimeout: 10000,
+            greetingTimeout: 10000,
+            socketTimeout: 15000
         });
     }
 
