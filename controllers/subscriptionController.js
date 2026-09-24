@@ -216,7 +216,7 @@ export const verifyPayment = async (req, res) => {
 
         // Payment is genuine
         return res.status(200).json({
-            message: "Payment verified successfully and subscription activated",
+            message:"Payment verified successfully and subscription activated",
             subscription
         });
 

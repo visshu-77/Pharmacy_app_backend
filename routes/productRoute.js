@@ -13,8 +13,7 @@ import {
 } from '../controllers/productControllers.js';
 import { authMiddleware } from '../middleware/authmiddleware.js';
 import { checkSubscription } from "../middleware/subscriptionMiddleware.js";
-import multer from "multer";
-const upload = multer({ storage: multer.memoryStorage() });
+import upload, { handleUpload } from "../middleware/upload.js";
 
 const router = express();
 
@@ -25,7 +24,7 @@ router.delete("/delete/:id", authMiddleware, checkSubscription, deleteProduct);
 router.put('/update/:id', authMiddleware, checkSubscription, updateCategory);
 
 router.get("/exports", authMiddleware, checkSubscription, exportproducts);
-router.post("/imports", authMiddleware, checkSubscription, upload.single("file"), importProducts);
+router.post("/imports", authMiddleware, checkSubscription, handleUpload(upload.single("file")), importProducts);
 
 router.get('/single/:id', authMiddleware, checkSubscription, singleProduct)
 

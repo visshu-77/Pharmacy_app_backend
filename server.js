@@ -26,7 +26,7 @@ const app = express();
  * Allowed browser origins.
  *
  * FRONTEND_URL holds one URL or several separated by commas:
- *   FRONTEND_URL=https://pharmacy-app-wheat-nine.vercel.app,http://localhost:3000
+ *   FRONTEND_URL=https://,http://localhost:3000
  *
  * A "*" wildcard is allowed in the host, which covers Vercel preview
  * deployments that get a new URL every push:

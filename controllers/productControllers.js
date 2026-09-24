@@ -371,8 +371,10 @@ const parseCsvDate = (value) => {
 export const importProducts = async (req, res) => {
     try {
         if (!req.file) {
+            // Either no file was attached, or the request wasn't sent as
+            // multipart/form-data (a JSON Content-Type header hides the file).
             return res.status(400).json({
-                message: "Please choose a CSV file to import"
+                message: "No CSV file received. Choose a .csv file and try again."
             });
         }
 
