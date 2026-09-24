@@ -1,11 +1,17 @@
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({
-    apiKey : process.env.GEMINI_API_KEY
-});
+// Created on first use so it picks up GEMINI_API_KEY after .env is loaded.
+let ai = null;
+
+const client = () => {
+    if (!ai) {
+        ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    }
+    return ai;
+};
 
 export const askGemini = async (prompt) => {
-    const response = await ai.models.generateContent({
+    const response = await client().models.generateContent({
         model: "gemini-3.5-flash",
         contents:prompt
     })

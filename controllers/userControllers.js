@@ -1,7 +1,7 @@
 import userModel from '../model/users.js';
 import bcrypt from "bcrypt";
 import subscriptionModel from "../model/subscription.js";
-import categoryModel from "../model/category.js";
+import { seedStarterCategories } from "../services/categorySeedService.js";
 
 import jwt from "jsonwebtoken";
 
@@ -36,155 +36,16 @@ export const listBusinessTypes = (req, res) => {
 };
 
 /**
- * Give a brand-new shop a usable category list straight away, so the owner's
- * first product does not force them to invent a taxonomy.
+ * Direct signup is closed: accounts are now created only after the email code
+ * is verified (see controllers/signupOtpController.js). Kept as an explicit
+ * error so an old cached frontend gets a clear message instead of silently
+ * creating an unverified account.
  */
-const seedStarterCategories = async (userId, profile) => {
-    try {
-        const existing = await categoryModel.countDocuments({ userId });
-
-        if (existing > 0) return;
-
-        await categoryModel.insertMany(
-            profile.defaultCategories.map((categoryName) => ({
-                categoryName,
-                description: `Starter category for ${profile.label}`,
-                userId
-            }))
-        );
-    } catch (error) {
-        // Seeding is a convenience — never fail registration over it.
-        console.log("Category seeding skipped:", error.message);
-    }
-};
-
 export const registeruser = async (req, res) => {
-    try {
-
-        const {
-            Shopname,
-            ownerName,
-            mobileNumber,
-            email,
-            Password,
-            confirmPassword,
-            shopAddress,
-            city,
-            state,
-            gstNumber,
-            licenseNumber,
-            businessType
-        } = req.body;
-
-        const required = {
-            Shopname,
-            ownerName,
-            mobileNumber,
-            email,
-            Password,
-            confirmPassword,
-            shopAddress,
-            city,
-            state
-        };
-
-        const missing = Object.entries(required)
-            .filter(([, value]) => !value)
-            .map(([key]) => key);
-
-        if (missing.length > 0) {
-            return res.status(400).json({
-                message: "Please fill in all the required fields",
-                missing
-            });
-        }
-
-        const resolvedType = BUSINESS_TYPE_IDS.includes(businessType)
-            ? businessType
-            : DEFAULT_BUSINESS_TYPE;
-
-        const profile = getBusinessType(resolvedType);
-
-        // A pharmacy without a drug licence is not a pharmacy.
-        if (profile.licence?.required && !licenseNumber) {
-            return res.status(400).json({
-                message: `${profile.licence.label} is required for a ${profile.label}`
-            });
-        }
-
-        const existinUser = await userModel.findOne({ email })
-
-        if (existinUser) {
-            return res.status(409).json({
-                message: "This email is already registered"
-            });
-        }
-
-        if (Password !== confirmPassword) {
-            return res.status(400).json({
-                message: "Password and confirm password do not match"
-            })
-        }
-
-        if (String(Password).length < 8) {
-            return res.status(400).json({
-                message: "Password should be at least 8 characters long"
-            })
-        }
-
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(Password, salt);
-
-        const user = await userModel.create({
-            Shopname,
-            businessType: resolvedType,
-            ownerName,
-            mobileNumber,
-            email,
-            Password: hashedPassword,
-            shopAddress,
-            city,
-            state,
-            gstNumber: gstNumber || "",
-            licenseNumber: licenseNumber || "",
-            preferences: {
-                lowStockThreshold: profile.lowStockThreshold,
-                defaultTaxRate: profile.defaultTaxRate
-            }
-        });
-
-        await seedStarterCategories(user._id, profile);
-
-        const token = jwt.sign(
-            {
-                id: user._id,
-                email: user.email,
-                role: user.role
-            },
-            process.env.JWT_SECRET_KEY,
-            {
-                expiresIn: "1d"
-            }
-        )
-
-        return res.status(201).json({
-            message: "Account created successfully",
-            token,
-            user: {
-                id: user._id,
-                email: user.email,
-                Shopname: user.Shopname,
-                businessType: user.businessType
-            }
-        });
-
-    } catch (err) {
-        console.log("Register error:", err);
-
-        return res.status(500).json({
-            message: "Server error"
-        });
-    }
+    return res.status(410).json({
+        message: "Please refresh the page — signup now verifies your email with a code.",
+        useEndpoints: ["/api/register/send-otp", "/api/register/verify-otp"]
+    });
 };
 
 export const getProfile = async (req, res) => {

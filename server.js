@@ -1,8 +1,9 @@
-import express from 'express';
-import dotenv from 'dotenv';
-import cors from 'cors';
+// MUST be first: in ES modules every import is evaluated before the code
+// below it, so loading .env here is what lets config/* read process.env.
+import 'dotenv/config';
 
-dotenv.config();
+import express from 'express';
+import cors from 'cors';
 
 import connectDb from './config/db.js';
 
