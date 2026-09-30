@@ -6,9 +6,9 @@
  */
 export const subscriptionPlans = {
     pro: {
-        monthly: 999,
-        sixMonths: 4999,
-        yearly: 9999
+        monthly: 499,
+        sixMonths: 2899,
+        yearly: 4999
     }
 };
 

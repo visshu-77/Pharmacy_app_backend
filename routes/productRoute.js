@@ -6,6 +6,7 @@ import {
     getProduct,
     updateCategory,
     importProducts,
+    importProductsBatch,
     singleProduct,
     searchProducts,
     deleteSelectedProducts,
@@ -25,6 +26,8 @@ router.put('/update/:id', authMiddleware, checkSubscription, updateCategory);
 
 router.get("/exports", authMiddleware, checkSubscription, exportproducts);
 router.post("/imports", authMiddleware, checkSubscription, handleUpload(upload.single("file")), importProducts);
+// Batched import — lets the UI show real progress.
+router.post("/import-batch", authMiddleware, checkSubscription, importProductsBatch);
 
 router.get('/single/:id', authMiddleware, checkSubscription, singleProduct)
 

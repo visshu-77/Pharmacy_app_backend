@@ -372,3 +372,145 @@ export const searchSuppliers = async (req, res) => {
         });
     }
 };
+
+/**
+ * POST /supplier/import-batch
+ *
+ * One chunk of supplier rows already parsed by the browser, so the UI can show
+ * real progress. Unlike /import, a bad row is skipped with a reason instead of
+ * failing the whole file.
+ *
+ * Body: { rows: [ {supplierName, phone, ...}, ... ], rowOffset?: number }
+ */
+export const importSuppliersBatch = async (req, res) => {
+    try {
+        const { rows, rowOffset = 0 } = req.body;
+
+        if (!Array.isArray(rows) || rows.length === 0) {
+            return res.status(400).json({ message: "No rows received" });
+        }
+
+        if (rows.length > 200) {
+            return res.status(400).json({ message: "Send at most 200 rows per batch" });
+        }
+
+        const documents = [];
+        const skipped = [];
+
+        rows.forEach((row, index) => {
+            // +2: CSV line numbers start at 1 and row 1 is the header.
+            const lineNumber = (Number(rowOffset) || 0) + index + 2;
+
+            const supplierName = (row.supplierName || row["Supplier Name"] || "").trim();
+            const phone = String(row.phone || row.Phone || "").trim();
+
+            if (!supplierName) {
+                skipped.push({ row: lineNumber, reason: "Missing supplier name" });
+                return;
+            }
+
+            if (!phone) {
+                skipped.push({ row: lineNumber, reason: "Missing phone number" });
+                return;
+            }
+
+            documents.push({
+                supplierName,
+                phone,
+                email: (row.email || row.Email || "").trim(),
+                address: (row.address || row.Address || "").trim(),
+                city: (row.city || row.City || "").trim(),
+                state: (row.state || row.State || "").trim(),
+                gstNumber: (row.gstNumber || row["GST Number"] || "").trim(),
+                userId: req.user.id,
+                line: lineNumber
+            });
+        });
+
+        // A supplier already on file is the same supplier, not a second one:
+        // match on phone first, then name, and refresh their details instead
+        // of saving a duplicate.
+        const existing = documents.length === 0 ? [] : await supplierModel
+            .find({
+                userId: req.user.id,
+                $or: [
+                    { phone: { $in: documents.map((one) => one.phone) } },
+                    { supplierName: { $in: documents.map((one) => one.supplierName) } }
+                ]
+            })
+            .select("supplierName phone")
+            .collation({ locale: "en", strength: 2 })   // ignore case
+            .lean();
+
+        const byKey = new Map();
+
+        const keysOf = (supplier) => [
+            supplier.phone ? `phone:${String(supplier.phone).trim()}` : null,
+            `name:${(supplier.supplierName || "").trim().toLowerCase()}`
+        ].filter(Boolean);
+
+        for (const supplier of existing) {
+            for (const key of keysOf(supplier)) {
+                if (!byKey.has(key)) byKey.set(key, String(supplier._id));
+            }
+        }
+
+        const inserts = [];
+        const operations = [];
+        const claimed = new Set();   // keys taken by a row earlier in this file
+
+        for (const document of documents) {
+            const keys = keysOf(document);
+            const id = keys.map((key) => byKey.get(key)).find(Boolean);
+
+            if (id) {
+                // Blank cells must not wipe details already saved.
+                const changes = Object.fromEntries(
+                    Object.entries(document).filter(
+                        ([field, value]) => !["userId", "line"].includes(field) && value
+                    )
+                );
+
+                operations.push({
+                    updateOne: {
+                        filter: { _id: id, userId: req.user.id },
+                        update: { $set: changes }
+                    }
+                });
+                continue;
+            }
+
+            // Listed twice in the same file: keep the first copy only.
+            if (keys.some((key) => claimed.has(key))) {
+                skipped.push({ row: document.line, reason: "Listed earlier in this file" });
+                continue;
+            }
+
+            keys.forEach((key) => claimed.add(key));
+            inserts.push(document);
+        }
+
+        if (inserts.length > 0) {
+            await supplierModel.insertMany(
+                inserts.map(({ line, ...supplier }) => supplier),
+                { ordered: false }
+            );
+        }
+
+        if (operations.length > 0) {
+            await supplierModel.bulkWrite(operations, { ordered: false });
+        }
+
+        return res.status(200).json({
+            importedCount: inserts.length,
+            updatedCount: operations.length,
+            skippedCount: skipped.length,
+            skipped: skipped.sort((a, b) => a.row - b.row)
+        });
+
+    } catch (error) {
+        console.log("Import suppliers batch error:", error);
+
+        return res.status(500).json({ message: "Failed to import this batch" });
+    }
+};

@@ -7,6 +7,7 @@ import {
     updateSupplier,
     deleteSupplier,
     importSuppliers,
+    importSuppliersBatch,
     deleteSelectedSuppliers,
     deleteAllSuppliers,
     searchSuppliers
@@ -27,6 +28,8 @@ router.get('/single/:id', authMiddleware, getSupplierById);
 router.put('/update/:id', authMiddleware, updateSupplier);
 router.delete('/delete/:id', authMiddleware, deleteSupplier);
 router.post('/import', authMiddleware, importSuppliers);
+// Batched import — lets the UI show real progress.
+router.post('/import-batch', authMiddleware, importSuppliersBatch);
 router.delete('/delete-selected', authMiddleware, deleteSelectedSuppliers);
 router.delete('/delete-all', authMiddleware, deleteAllSuppliers);
 
