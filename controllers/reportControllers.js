@@ -712,9 +712,14 @@ export const exportReport = async (req, res) => {
     try {
         const userId = new mongoose.Types.ObjectId(req.user.id);
 
+        // Only money actually taken. Every order used to be "Paid", so this
+        // changes nothing for older data; it keeps goods given on udhar — and
+        // cancelled bills — out of a file headed "sales report", where adding
+        // up the amount column would otherwise count them as takings.
         const orders = await orderModel
             .find({
-                userId
+                userId,
+                paymentStatus: "Paid"
             })
             .sort({ createdAt: -1 })
             .lean();

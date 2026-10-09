@@ -1,6 +1,12 @@
 import mongoose from "mongoose";
 import orderModel from "../model/order.js";
-import productModel from "../model/product.js";
+import {
+    applySaleTotals,
+    buildSaleItems,
+    deductStockForItems,
+    isSaleError,
+    STOCK_RACE_ERROR
+} from "../services/saleService.js";
 
 export const createOrder = async (req, res) => {
     const session = await mongoose.startSession();
@@ -26,67 +32,16 @@ export const createOrder = async (req, res) => {
                 message: "Payment method is required"
             });
         }
-        const orderItems = [];
-        let subtotal = 0;
-        for (const item of items) {
 
-            if (!mongoose.Types.ObjectId.isValid(item.productId)) {
-                return res.status(400).json({
-                    message: "Invalid product ID"
-                });
-            }
+        // Prices, stock checks and totals are the shared sale rules — the
+        // same ones a credit sale goes through.
+        const { orderItems, subtotal } = await buildSaleItems({
+            userId: req.user.id,
+            items,
+            session
+        });
 
-            const product = await productModel.findOne({
-                _id: item.productId,
-                userId: req.user.id
-            }).session(session);
-
-            if (!product) {
-                return res.status(404).json({
-                    message: `Product not found`
-                });
-            }
-
-
-            // Quantities can be fractional for loose goods (1.5 kg, 2.5 m).
-            if (!(Number(item.quantity) > 0)) {
-                return res.status(400).json({
-                    message: "Invalid quantity"
-                });
-            }
-
-            if (product.stock < item.quantity) {
-                return res.status(400).json({
-                    message: `${product.productName} has only ${product.stock} ${product.unit || "units"} in stock`
-                });
-            }
-
-            const price = product.sellingPrice;
-            const total = Math.round(price * item.quantity * 100) / 100;
-            subtotal += total;
-            orderItems.push({
-                productId: product._id,
-                productName: product.productName,
-                price,
-                quantity: item.quantity,
-                unit: product.unit || "piece",
-                total
-            });
-        }
-
-        const discountAmount = Number(discount) || 0;
-        const taxAmount = Number(tax) || 0;
-
-        const grandTotal =
-            subtotal -
-            discountAmount +
-            taxAmount;
-
-        if (grandTotal < 0) {
-            return res.status(400).json({
-                message: "Invalid total amount"
-            });
-        }
+        const totals = applySaleTotals({ subtotal, discount, tax });
 
         const invoiceNumber =
             `INV-${Date.now()}`;
@@ -99,9 +54,9 @@ export const createOrder = async (req, res) => {
             customerPhone: (customerPhone || "").trim(),
             items: orderItems,
             subtotal,
-            discount: discountAmount,
-            tax: taxAmount,
-            grandTotal,
+            discount: totals.discount,
+            tax: totals.tax,
+            grandTotal: totals.grandTotal,
             paymentMethod,
             paymentStatus: "Paid"
         }],
@@ -109,32 +64,12 @@ export const createOrder = async (req, res) => {
             session
         }
         );
-        for (const item of items) {
 
-            const updatedProduct = await productModel.findOneAndUpdate(
-                {
-                    _id: item.productId,
-                    userId: req.user.id,
-                    stock: {
-                        $gte: item.quantity
-                    }
-                },
-                {
-                    $inc: {
-                        stock: -item.quantity
-                    }
-                },
-                {
-                    new: true,
-                    session
-                }
-            );
-            if (!updatedProduct) {
-                throw new Error(
-                    "Product does not have enough stock"
-                );
-            }
-        }
+        await deductStockForItems({
+            userId: req.user.id,
+            items: orderItems,
+            session
+        });
 
         await session.commitTransaction();
         return res.status(201).json({
@@ -145,10 +80,19 @@ export const createOrder = async (req, res) => {
         if (session.inTransaction()) {
             await session.abortTransaction();
         }
+
+        // A rejected line (bad id, missing product, not enough stock) is the
+        // customer's problem to fix, not a server fault.
+        if (isSaleError(error)) {
+            return res.status(error.status).json({
+                message: error.message
+            });
+        }
+
         console.log("Create order error:", error);
 
         // Stock ran out between the check and the decrement (another bill).
-        if (error.message === "Product does not have enough stock") {
+        if (error.message === STOCK_RACE_ERROR) {
             return res.status(409).json({
                 message: "Stock changed while billing. Please review quantities and try again."
             });

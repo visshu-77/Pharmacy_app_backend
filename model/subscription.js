@@ -10,8 +10,8 @@ const subscriptionSchema = new mongoose.Schema(
 
         plan: {
             type: String,
-            // "pro" is the only plan on sale; the rest are kept so older
-            // subscriptions still load.
+                // "pro" is the only plan on sale; the rest are kept so older
+                // subscriptions still load.
             enum: ["pro", "normal", "premium", "business"],
             required: true
         },
@@ -70,4 +70,4 @@ const subscription = mongoose.model(
     subscriptionSchema
 );
 
-export default subscription;
+export default subscription;        

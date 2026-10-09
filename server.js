@@ -18,6 +18,7 @@ import supplierRoutes from "./routes/supplierRoute.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import noteRoutes from "./routes/noteRoute.js";
+import creditRoutes from "./routes/creditRoute.js";
 import { describeMail } from "./services/mailer.js";
 
 connectDb();
@@ -146,6 +147,7 @@ app.use('/supplier', supplierRoutes);
 app.use('/dashboard', dashboardRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/note", noteRoutes);
+app.use("/udhar", creditRoutes);
 
 app.get('/', (req, res) => {
     res.send("backed is running")

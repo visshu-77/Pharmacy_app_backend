@@ -83,13 +83,18 @@ const orderSchema = new mongoose.Schema(
 
         paymentMethod: {
             type: String,
-            enum: ["Cash", "Card", "UPI"],
+            // "Credit" = sold on udhar; the money is owed, not collected.
+            enum: ["Cash", "Card", "UPI", "Credit"],
             required: true
         },
 
         paymentStatus: {
             type: String,
-            enum: ["Pending", "Paid"],
+            // A credit sale stays "Pending" for good: what has been repaid is
+            // a fact about the customer's khata as a whole, not about one
+            // bill, so no bill is ever flipped to "Paid" later. Reports count
+            // only "Paid", which keeps udhar out of cash takings.
+            enum: ["Pending", "Paid", "Cancelled"],
             default: "Paid"
         },
 
@@ -97,10 +102,18 @@ const orderSchema = new mongoose.Schema(
         // "note":    a quick line jotted on the Sales Note page. Still a real
         //            sale — stock moves and reports count it — just without
         //            customer details or a printed invoice.
+        // "credit":  goods taken on udhar. Stock moves; the money is tracked
+        //            in the customer's ledger instead of the till.
         source: {
             type: String,
-            enum: ["billing", "note"],
+            enum: ["billing", "note", "credit"],
             default: "billing"
+        },
+
+        // Set only on a credit sale — the khata this bill was booked to.
+        creditCustomerId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "dashboard/creditCustomers"
         },
 
         remark: {
