@@ -37,6 +37,11 @@ const orderSchema = new mongoose.Schema(
                     required: true
                 },
 
+                hsnCode: {
+                    type: String,
+                    default: ""
+                },
+
                 price: {
                     type: Number,
                     required: true
@@ -57,6 +62,32 @@ const orderSchema = new mongoose.Schema(
                 total: {
                     type: Number,
                     required: true
+                },
+
+                taxableAmount: {
+                    type: Number,
+                    min: 0
+                },
+
+                amount: {
+                    type: Number,
+                    min: 0
+                },
+
+                taxRate: {
+                    type: Number,
+                    min: 0,
+                    max: 100
+                },
+
+                cgst: {
+                    type: Number,
+                    min: 0
+                },
+
+                sgst: {
+                    type: Number,
+                    min: 0
                 }
             }
         ],
@@ -76,6 +107,18 @@ const orderSchema = new mongoose.Schema(
             default: 0
         },
 
+        cgst: {
+            type: Number,
+            default: null,
+            min: 0
+        },
+
+        sgst: {
+            type: Number,
+            default: null,
+            min: 0
+        },
+
         grandTotal: {
             type: Number,
             required: true
@@ -84,7 +127,7 @@ const orderSchema = new mongoose.Schema(
         paymentMethod: {
             type: String,
             // "Credit" = sold on udhar; the money is owed, not collected.
-            enum: ["Cash", "Card", "UPI", "Credit"],
+            enum: ["Cash", "Card", "UPI", "Bank", "Credit"],
             required: true
         },
 

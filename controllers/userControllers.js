@@ -384,6 +384,71 @@ export const updateProfile = async (req, res) => {
     }
 };
 
+export const updateProfileImage = async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({
+            message: "Choose an image to upload"
+        });
+    }
+
+    try {
+        const profileImage = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
+        const user = await userModel
+            .findByIdAndUpdate(
+                req.user.id,
+                { profileImage },
+                { new: true, runValidators: true }
+            )
+            .select("-Password");
+
+        if (!user) {
+            return res.status(404).json({
+                message: "User not found"
+            });
+        }
+
+        return res.status(200).json({
+            message: "Shop logo updated successfully",
+            user
+        });
+    } catch (error) {
+        console.log("Update profile image error:", error);
+
+        return res.status(500).json({
+            message: "Could not update shop logo"
+        });
+    }
+};
+
+export const removeProfileImage = async (req, res) => {
+    try {
+        const user = await userModel
+            .findByIdAndUpdate(
+                req.user.id,
+                { profileImage: "" },
+                { new: true }
+            )
+            .select("-Password");
+
+        if (!user) {
+            return res.status(404).json({
+                message: "User not found"
+            });
+        }
+
+        return res.status(200).json({
+            message: "Shop logo removed successfully",
+            user
+        });
+    } catch (error) {
+        console.log("Remove profile image error:", error);
+
+        return res.status(500).json({
+            message: "Could not remove shop logo"
+        });
+    }
+};
+
 export const changePassword = async (req, res) => {
     try {
         const {

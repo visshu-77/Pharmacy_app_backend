@@ -10,8 +10,10 @@ import userModel from "../model/users.js";
 import subscriptionModel from "../model/subscription.js";
 import creditCustomerModel from "../model/creditCustomer.js";
 import creditTransactionModel from "../model/creditTransaction.js";
+import cashReceiptModel from "../model/cashReceipt.js";
 import creditRoutes from "../routes/creditRoute.js";
 import orderRoutes from "../routes/orderRoute.js";
+import cashReceiptRoutes from "../routes/cashReceiptRoute.js";
 import noteRoutes from "../routes/noteRoute.js";
 
 /**
@@ -40,6 +42,7 @@ export const connectTestDb = async (dbName) => {
     // before anything runs instead of waiting for the background job.
     await creditCustomerModel.syncIndexes();
     await creditTransactionModel.syncIndexes();
+    await cashReceiptModel.syncIndexes();
 };
 
 /**
@@ -131,6 +134,7 @@ export const startApi = async () => {
     // Mounted so the billing and sales-note paths can be checked for
     // regressions alongside the khata.
     app.use("/order", orderRoutes);
+    app.use("/cash-receipts", cashReceiptRoutes);
     app.use("/note", noteRoutes);
 
     const server = app.listen(0);

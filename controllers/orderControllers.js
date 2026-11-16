@@ -1,12 +1,42 @@
 import mongoose from "mongoose";
 import orderModel from "../model/order.js";
 import {
+    applyItemTaxes,
     applySaleTotals,
     buildSaleItems,
     deductStockForItems,
     isSaleError,
     STOCK_RACE_ERROR
 } from "../services/saleService.js";
+
+export const getOrderHistory = async (req, res) => {
+    try {
+        const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+        const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 25));
+        const filter = {
+            userId: req.user.id,
+            source: { $ne: "note" }
+        };
+        const [orders, total] = await Promise.all([
+            orderModel
+                .find(filter)
+                .sort({ createdAt: -1, _id: -1 })
+                .skip((page - 1) * limit)
+                .limit(limit)
+                .lean(),
+            orderModel.countDocuments(filter)
+        ]);
+
+        return res.status(200).json({
+            orders,
+            page,
+            hasMore: page * limit < total
+        });
+    } catch (error) {
+        console.log("Get order history error:", error);
+        return res.status(500).json({ message: "Could not load billing history" });
+    }
+};
 
 export const createOrder = async (req, res) => {
     const session = await mongoose.startSession();
@@ -33,15 +63,50 @@ export const createOrder = async (req, res) => {
             });
         }
 
+        const hasItemTaxRates = items.some((item) =>
+            Object.prototype.hasOwnProperty.call(item, "taxRate")
+        );
+
+        if (hasItemTaxRates && items.some((item) =>
+            !Object.prototype.hasOwnProperty.call(item, "taxRate")
+        )) {
+            return res.status(400).json({
+                message: "GST rate is required for every item"
+            });
+        }
+
         // Prices, stock checks and totals are the shared sale rules — the
         // same ones a credit sale goes through.
-        const { orderItems, subtotal } = await buildSaleItems({
+        let { orderItems, subtotal } = await buildSaleItems({
             userId: req.user.id,
             items,
-            session
+            session,
+            allowTaxRateOverride: hasItemTaxRates
         });
 
-        const totals = applySaleTotals({ subtotal, discount, tax });
+        let totals;
+        let cgst;
+        let sgst;
+        if (hasItemTaxRates) {
+            const discountedTotals = applySaleTotals({ subtotal, discount });
+            const taxBreakdown = applyItemTaxes({
+                orderItems,
+                subtotal,
+                discount: discountedTotals.discount
+            });
+            orderItems = taxBreakdown.orderItems;
+            cgst = taxBreakdown.cgst;
+            sgst = taxBreakdown.sgst;
+            totals = applySaleTotals({
+                subtotal,
+                discount: discountedTotals.discount,
+                tax: taxBreakdown.tax
+            });
+        } else {
+            totals = applySaleTotals({ subtotal, discount, tax });
+            cgst = Math.round(totals.tax / 2 * 100) / 100;
+            sgst = Math.round((totals.tax - cgst) * 100) / 100;
+        }
 
         const invoiceNumber =
             `INV-${Date.now()}`;
@@ -56,6 +121,8 @@ export const createOrder = async (req, res) => {
             subtotal,
             discount: totals.discount,
             tax: totals.tax,
+            cgst,
+            sgst,
             grandTotal: totals.grandTotal,
             paymentMethod,
             paymentStatus: "Paid"

@@ -48,7 +48,8 @@ export const buildSaleItems = async ({
     userId,
     items,
     session = null,
-    allowPriceOverride = false
+    allowPriceOverride = false,
+    allowTaxRateOverride = false
 }) => {
     if (!items || items.length === 0) {
         throw fail(400, "Cart is empty");
@@ -94,6 +95,21 @@ export const buildSaleItems = async ({
             throw fail(400, "Price cannot be negative");
         }
 
+        let taxRate;
+        if (allowTaxRateOverride) {
+            const hasTaxRate = Object.prototype.hasOwnProperty.call(item, "taxRate");
+            taxRate = hasTaxRate ? Number(item.taxRate) : Number(product.taxRate) || 0;
+
+            if (
+                (hasTaxRate && (item.taxRate === null || item.taxRate === "")) ||
+                !Number.isFinite(taxRate) ||
+                taxRate < 0 ||
+                taxRate > 100
+            ) {
+                throw fail(400, "GST rate must be between 0 and 100");
+            }
+        }
+
         const total = toPaise(price * item.quantity);
 
         subtotal += total;
@@ -101,10 +117,12 @@ export const buildSaleItems = async ({
         orderItems.push({
             productId: product._id,
             productName: product.productName,
+            hsnCode: product.hsnCode || "",
             price,
             quantity: Number(item.quantity),
             unit: product.unit || "piece",
-            total
+            total,
+            ...(allowTaxRateOverride ? { taxRate } : {})
         });
     }
 
@@ -123,6 +141,47 @@ export const applySaleTotals = ({ subtotal, discount = 0, tax = 0 }) => {
     }
 
     return { discount: discountAmount, tax: taxAmount, grandTotal };
+};
+
+/** Applies per-item GST after the bill discount, then splits it into CGST/SGST. */
+export const applyItemTaxes = ({ orderItems, subtotal, discount = 0 }) => {
+    const discountRatio = subtotal > 0 ? (subtotal - discount) / subtotal : 0;
+    const discountedSubtotal = toPaise(subtotal - discount);
+    let cgst = 0;
+    let sgst = 0;
+    let allocatedTaxableAmount = 0;
+
+    const taxedItems = orderItems.map((item, index) => {
+        const taxableAmount = index === orderItems.length - 1
+            ? toPaise(discountedSubtotal - allocatedTaxableAmount)
+            : toPaise(item.total * discountRatio);
+        allocatedTaxableAmount += taxableAmount;
+
+        const lineTax = toPaise(taxableAmount * (Number(item.taxRate) || 0) / 100);
+        const lineCgst = toPaise(lineTax / 2);
+        const lineSgst = toPaise(lineTax - lineCgst);
+
+        cgst += lineCgst;
+        sgst += lineSgst;
+
+        return {
+            ...item,
+            taxableAmount,
+            cgst: lineCgst,
+            sgst: lineSgst,
+            amount: toPaise(taxableAmount + lineTax)
+        };
+    });
+
+    cgst = toPaise(cgst);
+    sgst = toPaise(sgst);
+
+    return {
+        orderItems: taxedItems,
+        cgst,
+        sgst,
+        tax: toPaise(cgst + sgst)
+    };
 };
 
 /**

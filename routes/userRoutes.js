@@ -12,10 +12,13 @@ import {
     getPreference,
     updatePreference,
     getBillingDetails,
-    listBusinessTypes
+    listBusinessTypes,
+    updateProfileImage,
+    removeProfileImage
 } from '../controllers/userControllers.js';
 
 import { emailStatus } from '../controllers/emailStatusController.js';
+import profileImageUpload, { handleProfileImageUpload } from '../middleware/profileImageUpload.js';
 
 import users from '../model/users.js';
 
@@ -40,6 +43,13 @@ router.get('/verify', authMiddleware,
 )
 
 router.put("/update-profile", authMiddleware, updateProfile);
+router.put(
+    "/profile/image",
+    authMiddleware,
+    handleProfileImageUpload(profileImageUpload.single("profileImage")),
+    updateProfileImage
+);
+router.delete("/profile/image", authMiddleware, removeProfileImage);
 router.post('/change-password', authMiddleware, changePassword);
 
 router.put("/notification-setting", authMiddleware, updateNotifcationSettings);
