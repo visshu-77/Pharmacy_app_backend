@@ -20,6 +20,8 @@ import dashboardRoutes from "./routes/dashboard.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import noteRoutes from "./routes/noteRoute.js";
 import creditRoutes from "./routes/creditRoute.js";
+import expenseRoutes from "./routes/expenseRoute.js";
+import { startRecurringExpenseScheduler } from "./services/recurringExpenseScheduler.js";
 import { describeMail } from "./services/mailer.js";
 
 connectDb();
@@ -150,6 +152,7 @@ app.use('/dashboard', dashboardRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/note", noteRoutes);
 app.use("/udhar", creditRoutes);
+app.use("/expenses", expenseRoutes);
 
 app.get('/', (req, res) => {
     res.send("backed is running")
@@ -161,4 +164,5 @@ const PORT = Number.parseInt(process.env.PORT, 10) || 5000;
 
 app.listen(PORT, () => {
     console.log(` Server is running on port ${PORT}`)
+    startRecurringExpenseScheduler();
 })
