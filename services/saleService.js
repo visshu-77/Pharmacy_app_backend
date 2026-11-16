@@ -23,6 +23,16 @@ export const STOCK_RACE_ERROR = "Product does not have enough stock";
  */
 const toPaise = (value) => Math.round(Number(value) * 100) / 100;
 
+export const roundBillTotal = (amount) => {
+    const total = toPaise(amount);
+    const grandTotal = Math.round(total);
+
+    return {
+        grandTotal,
+        roundOff: toPaise(grandTotal - total)
+    };
+};
+
 /** An error the caller can hand straight back to the client. */
 const fail = (status, message) => {
     const error = new Error(message);

@@ -119,6 +119,11 @@ const orderSchema = new mongoose.Schema(
             min: 0
         },
 
+        roundOff: {
+            type: Number,
+            default: 0
+        },
+
         grandTotal: {
             type: Number,
             required: true

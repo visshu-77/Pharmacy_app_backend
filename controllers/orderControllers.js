@@ -6,6 +6,7 @@ import {
     buildSaleItems,
     deductStockForItems,
     isSaleError,
+    roundBillTotal,
     STOCK_RACE_ERROR
 } from "../services/saleService.js";
 
@@ -108,6 +109,7 @@ export const createOrder = async (req, res) => {
             sgst = Math.round((totals.tax - cgst) * 100) / 100;
         }
 
+        const { grandTotal, roundOff } = roundBillTotal(totals.grandTotal);
         const invoiceNumber =
             `INV-${Date.now()}`;
 
@@ -123,7 +125,8 @@ export const createOrder = async (req, res) => {
             tax: totals.tax,
             cgst,
             sgst,
-            grandTotal: totals.grandTotal,
+            roundOff,
+            grandTotal,
             paymentMethod,
             paymentStatus: "Paid"
         }],
