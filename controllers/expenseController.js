@@ -252,6 +252,9 @@ export const updateExpenseTransaction = async (req, res) => {
             userId: req.user.id
         });
         if (!transaction) return res.status(404).json({ message: "Transaction not found" });
+        if (transaction.sourceConversionId) {
+            return res.status(409).json({ message: "CRM-confirmed income is managed from the associated lead conversion" });
+        }
         const payload = parseTransactionPayload(req);
         if (!payload) return res.status(400).json({ message: "Transaction details are invalid" });
         const validation = await validateTransaction(payload, req.user.id, req.params.id);
@@ -292,6 +295,9 @@ export const deleteExpenseTransaction = async (req, res) => {
             userId: req.user.id
         });
         if (!transaction) return res.status(404).json({ message: "Transaction not found" });
+        if (transaction.sourceConversionId) {
+            return res.status(409).json({ message: "CRM-confirmed income is managed from the associated lead conversion" });
+        }
         if (transaction.type === "expense") {
             const categoryTotals = await getExpenseCategoryTotals({
                 userId: req.user.id,

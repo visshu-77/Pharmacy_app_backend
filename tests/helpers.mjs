@@ -15,6 +15,7 @@ import creditRoutes from "../routes/creditRoute.js";
 import orderRoutes from "../routes/orderRoute.js";
 import cashReceiptRoutes from "../routes/cashReceiptRoute.js";
 import noteRoutes from "../routes/noteRoute.js";
+import leadRoutes from "../routes/leadRoute.js";
 
 /**
  * Shared setup for the udhar tests.
@@ -136,6 +137,7 @@ export const startApi = async () => {
     app.use("/order", orderRoutes);
     app.use("/cash-receipts", cashReceiptRoutes);
     app.use("/note", noteRoutes);
+    app.use("/leads", leadRoutes);
 
     const server = app.listen(0);
     await once(server, "listening");

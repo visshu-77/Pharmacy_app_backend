@@ -53,6 +53,16 @@ const expenseTransactionSchema = new mongoose.Schema(
             ref: "dashboard/recurringExpenses",
             default: null
         },
+        sourceConversionId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "dashboard/leadConversions",
+            default: undefined
+        },
+        sourceEventKey: {
+            type: String,
+            maxlength: 120,
+            default: undefined
+        },
         receipt: {
             fileName: { type: String, maxlength: 255 },
             contentType: { type: String, enum: ["image/jpeg", "image/png", "image/webp", "application/pdf"] },
@@ -67,6 +77,14 @@ expenseTransactionSchema.index({ userId: 1, type: 1, transactionDate: -1 });
 expenseTransactionSchema.index({ userId: 1, categoryId: 1, transactionDate: -1 });
 expenseTransactionSchema.index(
     { recurrenceKey: 1 },
+    { unique: true, sparse: true }
+);
+expenseTransactionSchema.index(
+    { sourceConversionId: 1 },
+    { sparse: true }
+);
+expenseTransactionSchema.index(
+    { sourceEventKey: 1 },
     { unique: true, sparse: true }
 );
 
