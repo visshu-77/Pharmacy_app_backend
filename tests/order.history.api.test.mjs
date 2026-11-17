@@ -6,7 +6,9 @@ import orderModel from "../model/order.js";
 import {
     connectTestDb,
     createShop,
+    createProduct,
     disconnectTestDb,
+    stockOf,
     startApi
 } from "./helpers.mjs";
 
@@ -39,6 +41,7 @@ const createHistoryOrder = (owner, invoiceNumber, source = "billing") =>
         subtotal: 100,
         grandTotal: 100,
         paymentMethod: "Cash",
+        ...(source === "credit" ? { paymentStatus: "Pending" } : {}),
         source
     });
 
@@ -64,4 +67,40 @@ test("order history is authenticated, excludes sales notes, and is scoped to the
     assert.ok(invoices.includes("INV-HISTORY-2"));
     assert.ok(!invoices.includes("NOTE-HISTORY-1"));
     assert.ok(!invoices.includes("INV-OTHER-1"));
+});
+
+test("deleting a billing order removes it from dashboard totals and restores stock", async () => {
+    const owner = await createShop();
+    const product = await createProduct(owner, { stock: 4 });
+    const order = await orderModel.create({
+        invoiceNumber: "INV-DELETE-1",
+        userId: owner.userId,
+        customerName: "Delete test",
+        items: [{
+            productId: product._id,
+            productName: product.productName,
+            price: 100,
+            quantity: 3,
+            total: 300
+        }],
+        subtotal: 300,
+        grandTotal: 300,
+        paymentMethod: "Cash"
+    });
+    const creditOrder = await createHistoryOrder(owner, "INV-DELETE-CREDIT", "credit");
+
+    const before = await api.request("GET", "/dashboard/summary", { token: owner.token });
+    const unauthorizedDelete = await api.request("DELETE", `/order/${order._id}`, { token: otherShop.token });
+    const creditDelete = await api.request("DELETE", `/order/${creditOrder._id}`, { token: owner.token });
+    const deletion = await api.request("DELETE", `/order/${order._id}`, { token: owner.token });
+    const after = await api.request("GET", "/dashboard/summary", { token: owner.token });
+
+    assert.equal(before.body.summary.todaysRevenue, 300);
+    assert.equal(unauthorizedDelete.status, 404);
+    assert.equal(creditDelete.status, 409);
+    assert.equal(deletion.status, 200);
+    assert.equal(after.body.summary.todaysRevenue, 0);
+    assert.equal(after.body.summary.ordersToday, 0);
+    assert.equal(await stockOf(product._id), 7);
+    assert.ok(await orderModel.findById(creditOrder._id));
 });

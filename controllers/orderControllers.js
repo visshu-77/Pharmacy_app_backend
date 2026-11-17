@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import orderModel from "../model/order.js";
+import { withTransaction } from "../services/dbSession.js";
 import {
     applyItemTaxes,
     applySaleTotals,
@@ -7,8 +8,88 @@ import {
     deductStockForItems,
     isSaleError,
     roundBillTotal,
+    restoreStockForItems,
     STOCK_RACE_ERROR
 } from "../services/saleService.js";
+
+export const deleteOrder = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: "Invalid bill id" });
+        }
+
+        const result = await withTransaction(
+            async (session) => {
+                const order = await orderModel.findOne({
+                    _id: id,
+                    userId: req.user.id
+                }).session(session);
+
+                if (!order) return "not-found";
+                if (order.source === "credit" || order.source === "note") return "not-deletable";
+
+                if (order.paymentStatus !== "Cancelled") {
+                    await restoreStockForItems({
+                        userId: req.user.id,
+                        items: order.items,
+                        session
+                    });
+                }
+
+                await orderModel.deleteOne({ _id: id, userId: req.user.id }).session(session);
+                return "deleted";
+            },
+            {
+                fallback: async () => {
+                    const order = await orderModel.findOneAndUpdate(
+                        {
+                            _id: id,
+                            userId: req.user.id,
+                            source: { $nin: ["credit", "note"] },
+                            paymentStatus: { $ne: "Cancelled" }
+                        },
+                        { $set: { paymentStatus: "Cancelled" } },
+                        { new: false }
+                    );
+
+                    if (order) {
+                        await restoreStockForItems({
+                            userId: req.user.id,
+                            items: order.items
+                        });
+                        await orderModel.deleteOne({ _id: id, userId: req.user.id });
+                        return "deleted";
+                    }
+
+                    const existingOrder = await orderModel.findOne({
+                        _id: id,
+                        userId: req.user.id
+                    });
+                    if (!existingOrder) return "not-found";
+                    if (existingOrder.source === "credit" || existingOrder.source === "note") return "not-deletable";
+
+                    await orderModel.deleteOne({ _id: id, userId: req.user.id });
+                    return "deleted";
+                }
+            }
+        );
+
+        if (result === "not-found") {
+            return res.status(404).json({ message: "Bill not found" });
+        }
+        if (result === "not-deletable") {
+            return res.status(409).json({
+                message: "Credit bills must be cancelled from the customer's ledger."
+            });
+        }
+
+        return res.status(200).json({ message: "Bill deleted successfully" });
+    } catch (error) {
+        console.log("Delete bill error:", error);
+        return res.status(500).json({ message: "Could not delete bill" });
+    }
+};
 
 export const getOrderHistory = async (req, res) => {
     try {
