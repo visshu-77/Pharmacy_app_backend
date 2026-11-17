@@ -95,10 +95,15 @@ export const getOrderHistory = async (req, res) => {
     try {
         const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
         const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 25));
+        const search = String(req.query.search || "").trim().slice(0, 100);
         const filter = {
             userId: req.user.id,
             source: { $ne: "note" }
         };
+        if (search) {
+            const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            filter.customerName = { $regex: escapedSearch, $options: "i" };
+        }
         const [orders, total] = await Promise.all([
             orderModel
                 .find(filter)

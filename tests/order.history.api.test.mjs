@@ -54,6 +54,7 @@ test("order history is authenticated, excludes sales notes, and is scoped to the
     const unauthenticated = await api.request("GET", "/order/history");
     const response = await api.request("GET", "/order/history?page=1&limit=1", { token: shop.token });
     const secondPage = await api.request("GET", "/order/history?page=2&limit=1", { token: shop.token });
+    const matchingName = await api.request("GET", "/order/history?search=history-1", { token: shop.token });
 
     assert.equal(unauthenticated.status, 401);
     assert.equal(response.status, 200);
@@ -67,6 +68,8 @@ test("order history is authenticated, excludes sales notes, and is scoped to the
     assert.ok(invoices.includes("INV-HISTORY-2"));
     assert.ok(!invoices.includes("NOTE-HISTORY-1"));
     assert.ok(!invoices.includes("INV-OTHER-1"));
+    assert.deepEqual(matchingName.body.orders.map((order) => order.invoiceNumber), ["INV-HISTORY-1"]);
+    assert.equal(matchingName.body.hasMore, false);
 });
 
 test("deleting a billing order removes it from dashboard totals and restores stock", async () => {
